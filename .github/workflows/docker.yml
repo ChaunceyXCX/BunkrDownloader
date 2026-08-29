@@ -58,7 +58,7 @@ jobs:
         with:
           dockerfile: Dockerfile
           failure-threshold: warning
-          ignored-rules: DL3008,DL3013,DL3059
+          ignore: DL3008,DL3013,DL3059
 
   # -----------------------------------------------------------------------
   #  2. Build & push multi-arch image

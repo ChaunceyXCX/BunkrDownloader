@@ -50,6 +50,41 @@ class TestDockerfileInstructions:
         assert len(hc) == 1
         assert "curl" in hc[0]["value"] or "wget" in hc[0]["value"]
 
+    def test_apt_get_runs_hadolint_ignore_for_dl3008(self, raw_dockerfile: str) -> None:
+        """`python:3.12-slim` 的包版本由基础镜像锁定，
+        不应在 Dockerfile 中硬编码 apt 包版本。改用 # hadolint ignore=DL3008。
+
+        hadolint 指令必须出现于 RUN 指令之前一行（可以跨续行块）。
+        """
+        lines = raw_dockerfile.splitlines()
+        for idx, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped.startswith("RUN"):
+                continue
+            # 扫描 RUN 块（从当前行到下一个 instruction）
+            block = [stripped]
+            for j in range(idx + 1, len(lines)):
+                next_line = lines[j].strip()
+                if next_line and next_line.split(" ")[0].split("\t")[0].isupper() and (
+                    next_line.startswith(("RUN", "COPY", "ADD", "ENV", "EXPOSE",
+                                          "CMD", "ENTRYPOINT", "USER", "WORKDIR",
+                                          "LABEL", "VOLUME", "HEALTHCHECK", "ARG",
+                                          "ONBUILD", "STOPSIGNAL", "SHELL", "FROM"))
+                ):
+                    break
+                block.append(next_line)
+            block_text = "\n".join(block)
+            if "apt-get install" not in block_text:
+                continue
+            # 查找 RUN 前一行的 hadolint ignore 指令（必须以 # 开头）
+            preceding = lines[idx - 1] if idx > 0 else ""
+            if "hadolint ignore=DL3008" in preceding or "hadolint ignore=DL3008" in block_text:
+                continue
+            pytest.fail(
+                "apt-get install RUN 块前一行必须包含 # hadolint ignore=DL3008 "
+                "注释（line " + str(idx + 1) + "）：\n" + "\n".join(block)
+            )
+
     def test_exposes_8765(self, raw_dockerfile: str) -> None:
         # Find EXPOSE lines
         for line in raw_dockerfile.splitlines():
@@ -207,6 +242,23 @@ class TestGitHubWorkflows:
         on = data.get(True, data.get("on", {}))  # yaml 1.1 -> True
         tags = on.get("push", {}).get("tags", [])
         assert any("v*" in t for t in tags), f"no v* tag trigger: {tags}"
+
+    def test_docker_workflow_uses_valid_hadolint_inputs(self) -> None:
+        """验证 hadolint action 使用合法的输入参数。
+
+        正确输入是 `ignore` (不是过时的 `ignored-rules`)。
+        参考 hadolint/hadolint-action@v3.1.0 文档。
+        """
+        content = (self.WORKFLOWS / "docker.yml").read_text()
+        # 不应该使用废弃的 ignored-rules
+        assert "ignored-rules" not in content, (
+            "hadolint action 不支持 'ignored-rules'，"
+            "请改用 'ignore'"
+        )
+        # 应该使用 ignore（可以换行到下一行）
+        assert re.search(r"ignore\s*:", content), (
+            "应使用 'ignore:' 作为 hadolint action 的输入"
+        )
 
     def test_release_workflow_uses_gh_release_action(self) -> None:
         content = (self.WORKFLOWS / "release.yml").read_text()

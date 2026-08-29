@@ -15,6 +15,7 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
 WORKDIR /build
 
 # System deps needed at build time for wheels (aiohttp brings most)
+# hadolint ignore=DL3008 — versions are pinned by the python:3.12-slim base image
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
@@ -43,6 +44,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
 # tini-style signal handling + curl for healthcheck
+# hadolint ignore=DL3008 — versions are pinned by the python:3.12-slim base image
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         tini \
