@@ -1,0 +1,58 @@
+# ===== Git =====
+.git/
+.gitattributes
+.github/
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+.tox/
+*.egg-info/
+build/
+dist/
+
+# ===== IDE / editor =====
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+.pi-glla/
+
+# ===== Test artifacts =====
+tests/
+pytest.ini
+htmlcov/
+
+# ===== Logs / runtime =====
+*.log
+session.log
+*.bunkr_state.json
+.bunkr_downloader/
+state.db
+state.db-wal
+state.db-shm
+
+# ===== Docker =====
+Dockerfile
+.dockerignore
+docker-compose*.yml
+docker-compose*.yaml
+
+# ===== Docs (kept for size, optionally) =====
+# README.md
+# CONTRIBUTING.md
+# LICENSE
+# assets/

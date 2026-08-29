@@ -279,3 +279,106 @@ curl -X POST http://localhost:8765/api/tasks \
 pip install pytest pytest-asyncio
 python3 -m pytest tests/ -v
 ```
+
+## Docker
+
+BunkrDownloader 提供多架构 (linux/amd64, linux/arm64) Docker 镜像，默认启动 Web 控制台。
+
+### 快速启动
+
+```bash
+# 使用预构建镜像（需要 Docker 20.10+）
+docker run -d --name bunkr-web \
+  -p 8765:8765 \
+  -v bunkr-data:/data \
+  -v ./downloads:/downloads \
+  ghcr.io/lysagxra/bunkrdownloader-web:latest
+```
+
+或使用 docker compose（推荐）：
+
+```bash
+docker compose up -d
+```
+
+启动后访问 http://localhost:8765。
+
+### 数据持久化
+
+镜像将以下路径作为数据卷：
+
+| 路径 | 用途 | 是否必须 |
+|---|---|---|
+| `/data` | SQLite 状态数据库 (state.db) | 是 |
+| `/downloads` | 下载文件默认输出目录 | 否 |
+
+### 环境变量
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `BUNKR_HOST` | `0.0.0.0` | 监听地址 |
+| `BUNKR_PORT` | `8765` | 监听端口 |
+| `BUNKR_DB` | `/data/state.db` | SQLite 路径 |
+| `BUNKR_LOG_LEVEL` | `INFO` | 日志等级 |
+| `TZ` | `UTC` | 时区 |
+
+### 自定义配置
+
+```bash
+# 挂在自定义配置文件
+docker run -d --name bunkr-web \
+  -p 9000:8765 \
+  -v bunkr-data:/data \
+  -v $PWD/bunkr.toml:/app/bunkr.toml:ro \
+  -e BUNKR_PORT=8765 \
+  ghcr.io/lysagxra/bunkrdownloader-web:latest
+```
+
+### 本地构建
+
+```bash
+docker build -t bunkr-web:dev .
+docker run -d --rm -p 8765:8765 bunkr-web:dev
+```
+
+### 多架构构建
+
+```bash
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t ghcr.io/lysagxra/bunkrdownloader-web:dev \
+  --push .
+```
+
+## CI / CD
+
+项目提供以下 GitHub Actions 工作流（位于 `.github/workflows/`）：
+
+| 文件 | 触发 | 任务 |
+|---|---|---|
+| `ci.yml` | push / PR 到 main | 多版本 Python 单元测试 |
+| `pylint.yml` | push / PR | Pylint 静态检查 |
+| `docker.yml` | push / PR / tag | hadolint + 多架构镜像构建 + 推送 GHCR + 烟雾测试 |
+| `release.yml` | push tag (v*) | 全量测试 + 生成 changelog + 创建 GitHub Release |
+
+### 镜像发布到 GHCR
+
+推送语义化版本 tag 即可触发发布：
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+GH Actions 会自动：
+
+1. 运行多版本测试套件
+2. hadolint 静态检查
+3. 构建多架构镜像 (linux/amd64, linux/arm64)
+4. 推送镜像到 `ghcr.io/lysagxra/bunkrdownloader-web`，tag 包含 `v1.0.0` / `v1.0` / `1` / `latest` / `sha-xxxxxxx`
+5. 启动临时容器烟雾测试 `/api/health` `/api/stats` `/`
+6. 生成 CHANGELOG 并创建 GitHub Release
+
+#### 首次发布需配置
+
+仓库设置中确认 `Settings → Actions → General → Workflow permissions` 勾选 *“Read and write permissions”*，否则 GHCR 推送会报 403。

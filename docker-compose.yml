@@ -1,0 +1,72 @@
+# ============================================================================
+#  BunkrDownloader Web · docker-compose
+#  一键启动 Web 控制台
+#
+#  Usage:
+#    docker compose up -d            # 启动
+#    docker compose logs -f          # 查看日志
+#    docker compose down             # 停止
+#    docker compose down -v          # 停止并清空数据卷
+#
+#  浏览器打开 http://localhost:8765
+# ============================================================================
+
+services:
+  bunkr-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/lysagxra/bunkrdownloader-web:latest
+    container_name: bunkr-web
+    restart: unless-stopped
+
+    # 端口映射（可按需修改）
+    ports:
+      - "8765:8765"
+
+    # 环境变量
+    environment:
+      - BUNKR_HOST=0.0.0.0
+      - BUNKR_PORT=8765
+      - BUNKR_DB=/data/state.db
+      - BUNKR_LOG_LEVEL=INFO
+      # 时区（可选）
+      - TZ=${TZ:-UTC}
+
+    # 卷挂载
+    volumes:
+      # SQLite 数据库（断点续传状态）
+      - bunkr-data:/data
+      # 下载文件
+      - ./downloads:/downloads
+      # 可选：自定义配置文件
+      # - ./bunkr.toml:/app/bunkr.toml:ro
+
+    # 资源限制（可按需调整）
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8765/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    # 日志
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  bunkr-data:
+    name: bunkr-data

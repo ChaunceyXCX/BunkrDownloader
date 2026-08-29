@@ -1,0 +1,118 @@
+# ============================================================================
+#  BunkrDownloader · Release
+#  当推送 v*.*.* 形式的 tag 时：
+#    1. 跑全量测试
+#    2. 自动生成 changelog
+#    3. 创建 GitHub Release（带 docker pull 提示）
+# ============================================================================
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v1.0.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio
+      - name: Run tests
+        run: python -m pytest tests/ -v --tb=short
+
+  release:
+    name: Create Release
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # 取上一个 tag 作为基准
+          PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]' | sed -n '2p' || true)
+          if [ -z "$PREV_TAG" ]; then
+            RANGE=$(git rev-list --max-parents=0 HEAD | tail -1)
+            RANGE="$RANGE..HEAD"
+          else
+            RANGE="$PREV_TAG..HEAD"
+          fi
+          echo "Range: $RANGE"
+          {
+            echo "## What's Changed"
+            echo ""
+            # 简单按 Conventional Commits 分类
+            FEAT=$(git log "$RANGE" --pretty=format:'- %s (%h)' --grep='^feat' || true)
+            FIX=$(git log "$RANGE" --pretty=format:'- %s (%h)' --grep='^fix' || true)
+            PERF=$(git log "$RANGE" --pretty=format:'- %s (%h)' --grep='^perf' || true)
+            DOCS=$(git log "$RANGE" --pretty=format:'- %s (%h)' --grep='^docs' || true)
+            OTHER=$(git log "$RANGE" --pretty=format:'- %s (%h)' --invert-grep --grep='^feat' --grep='^fix' --grep='^perf' --grep='^docs' || true)
+            [ -n "$FEAT" ] && { echo "### 🚀 Features"; echo ""; echo "$FEAT"; echo ""; }
+            [ -n "$FIX" ]  && { echo "### 🐛 Bug Fixes"; echo ""; echo "$FIX"; echo ""; }
+            [ -n "$PERF" ] && { echo "### ⚡ Performance"; echo ""; echo "$PERF"; echo ""; }
+            [ -n "$DOCS" ] && { echo "### 📚 Documentation"; echo ""; echo "$DOCS"; echo ""; }
+            [ -n "$OTHER" ] && { echo "### 🔧 Other Changes"; echo ""; echo "$OTHER"; echo ""; }
+            echo "## Docker Image"
+            echo ""
+            echo "Multi-arch image (\`linux/amd64\`, \`linux/arm64\`) 已发布到 GHCR："
+            echo ""
+            echo '```bash'
+            echo "docker pull ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.tag }}"
+            echo "docker pull ghcr.io/${{ github.repository }}:latest"
+            echo ""
+            echo "# 或使用 docker compose"
+            echo "docker compose up -d"
+            echo '```'
+            echo ""
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG:-$(git rev-list --max-parents=0 HEAD | tail -1)}...${{ steps.tag.outputs.tag }}"
+          } > release_body.md
+          cat release_body.md
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          body_path: release_body.md
+          draft: false
+          prerelease: ${{ contains(steps.tag.outputs.tag, '-rc') || contains(steps.tag.outputs.tag, '-beta') || contains(steps.tag.outputs.tag, '-alpha') }}
+          fail_on_unmatched_files: true
+          generate_release_notes: false
