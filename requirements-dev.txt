@@ -1,0 +1,17 @@
+# ============================================================================
+#  BunkrDownloader · Development & Testing Dependencies
+#  安装：
+#      pip install -r requirements.txt -r requirements-dev.txt
+#
+#  这些依赖仅在开发 / CI / 测试时需要，不会被打入运行时 Docker 镜像。
+# ============================================================================
+
+# 测试框架
+pytest>=8.0
+pytest-asyncio>=0.23
+
+# Dockerfile 静态解析（用于 tests/test_dockerfile.py）
+dockerfile-parse>=2.0
+
+# GitHub Actions YAML 校验（用于 tests/test_dockerfile.py）
+PyYAML>=6.0

@@ -276,8 +276,14 @@ curl -X POST http://localhost:8765/api/tasks \
 ### 单元测试
 
 ```bash
-pip install pytest pytest-asyncio
+pip install -r requirements.txt -r requirements-dev.txt
 python3 -m pytest tests/ -v
+```
+
+CI 用的完整命令（带 JUnit 报告）：
+
+```bash
+python -m pytest tests/ -v --tb=short --junitxml=junit.xml
 ```
 
 ## Docker

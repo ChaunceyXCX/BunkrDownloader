@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 from dockerfile_parse import DockerfileParser
 
 
@@ -124,6 +125,15 @@ class TestDockerignore:
         content = self.IGNORE.read_text()
         assert "Dockerfile" in content
 
+    def test_excludes_dev_requirements(self) -> None:
+        content = self.IGNORE.read_text()
+        # requirements-dev.txt 不应被复制到运行镜像
+        assert "requirements-dev.txt" in content
+
+    def test_excludes_github_dir(self) -> None:
+        content = self.IGNORE.read_text()
+        assert ".github/" in content
+
 
 class TestDockerCompose:
     COMPOSE = PROJECT_ROOT / "docker-compose.yml"
@@ -132,13 +142,11 @@ class TestDockerCompose:
         assert self.COMPOSE.exists()
 
     def test_has_bunkr_service(self) -> None:
-        import yaml
         data = yaml.safe_load(self.COMPOSE.read_text())
         services = data.get("services", {})
         assert any("bunkr" in k.lower() for k in services.keys())
 
     def test_exposes_8765(self) -> None:
-        import yaml
         data = yaml.safe_load(self.COMPOSE.read_text())
         for svc in data["services"].values():
             ports = svc.get("ports", [])
@@ -146,7 +154,6 @@ class TestDockerCompose:
             assert any("8765" in p for p in port_strs), f"8765 not in {port_strs}"
 
     def test_has_volume_for_data(self) -> None:
-        import yaml
         data = yaml.safe_load(self.COMPOSE.read_text())
         for svc in data["services"].values():
             vols = svc.get("volumes", [])
@@ -154,7 +161,6 @@ class TestDockerCompose:
             assert any("/data" in v for v in vol_strs), f"no /data volume: {vol_strs}"
 
     def test_has_healthcheck(self) -> None:
-        import yaml
         data = yaml.safe_load(self.COMPOSE.read_text())
         for svc in data["services"].values():
             assert "healthcheck" in svc, "no healthcheck in service"
@@ -167,7 +173,6 @@ class TestGitHubWorkflows:
 
     @pytest.mark.parametrize("name", ["docker.yml", "ci.yml", "release.yml", "pylint.yml"])
     def test_workflow_valid_yaml(self, name: str) -> None:
-        import yaml
         path = self.WORKFLOWS / name
         assert path.exists(), f"missing: {name}"
         data = yaml.safe_load(path.read_text())
@@ -177,7 +182,6 @@ class TestGitHubWorkflows:
         assert len(data["jobs"]) > 0
 
     def test_docker_workflow_has_lint_build_smoke(self) -> None:
-        import yaml
         data = yaml.safe_load((self.WORKFLOWS / "docker.yml").read_text())
         jobs = data["jobs"]
         assert "lint" in jobs
@@ -190,7 +194,6 @@ class TestGitHubWorkflows:
         assert "packages: write" in content
 
     def test_docker_workflow_multi_arch(self) -> None:
-        import yaml
         data = yaml.safe_load((self.WORKFLOWS / "docker.yml").read_text())
         # 检查 matrix 中包含 amd64 与 arm64
         build = data["jobs"]["build"]
@@ -200,7 +203,6 @@ class TestGitHubWorkflows:
         assert "linux/arm64" in platforms
 
     def test_docker_workflow_triggers_on_tag(self) -> None:
-        import yaml
         data = yaml.safe_load((self.WORKFLOWS / "docker.yml").read_text())
         on = data.get(True, data.get("on", {}))  # yaml 1.1 -> True
         tags = on.get("push", {}).get("tags", [])

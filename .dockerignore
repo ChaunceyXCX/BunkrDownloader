@@ -35,6 +35,7 @@ dist/
 tests/
 pytest.ini
 htmlcov/
+requirements-dev.txt
 
 # ===== Logs / runtime =====
 *.log

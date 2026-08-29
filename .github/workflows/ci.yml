@@ -36,11 +36,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install dependencies
+      - name: Install runtime dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-asyncio
+
+      - name: Install test dependencies
+        run: |
+          pip install -r requirements-dev.txt
 
       - name: Run tests
         run: |
