@@ -230,12 +230,17 @@ class TestGitHubWorkflows:
 
     def test_docker_workflow_multi_arch(self) -> None:
         data = yaml.safe_load((self.WORKFLOWS / "docker.yml").read_text())
-        # 检查 matrix 中包含 amd64 与 arm64
         build = data["jobs"]["build"]
-        matrix = build.get("strategy", {}).get("matrix", {}).get("include", [])
-        platforms = {m.get("platform") for m in matrix if "platform" in m}
-        assert "linux/amd64" in platforms
-        assert "linux/arm64" in platforms
+        # multi-arch 通过 buildx 的一次调用完成，应在 build-push-action 的
+        # platforms 输入中同时包含两个架构。
+        content = (self.WORKFLOWS / "docker.yml").read_text()
+        assert "linux/amd64" in content
+        assert "linux/arm64" in content
+        # 不再需要 matrix（会重复构建）
+        matrix = build.get("strategy", {}).get("matrix")
+        assert matrix is None, (
+            "multi-arch 应使用 buildx 一次构建，不应该用 matrix"
+        )
 
     def test_docker_workflow_triggers_on_tag(self) -> None:
         data = yaml.safe_load((self.WORKFLOWS / "docker.yml").read_text())
@@ -258,6 +263,36 @@ class TestGitHubWorkflows:
         # 应该使用 ignore（可以换行到下一行）
         assert re.search(r"ignore\s*:", content), (
             "应使用 'ignore:' 作为 hadolint action 的输入"
+        )
+
+    def test_docker_workflow_attest_has_valid_subject_digest(self) -> None:
+        """验证 SLSA provenance attestation 的 subject-digest 来源。
+
+        常见 bug：attest 步骤中的 steps.X.outputs.digest 引用了一个
+        没有 id 的 step，导致 digest 为空，attest 报错：
+          'Error: One of subject-path, subject-digest, or subject-checksums
+           must be provided'
+
+        修正：build-push-action 必须设 id: build，attest 才能正确读取 digest。
+        """
+        content = (self.WORKFLOWS / "docker.yml").read_text()
+
+        # 找到 build-push-action 行与其 id
+        match = re.search(
+            r"uses:\s*docker/build-push-action@[^\n]+\s*\n"
+            r"[\s\S]*?",
+            content,
+        )
+        # 验证 build 步骤设了 id: build
+        assert re.search(
+            r"-\s*name:\s*Build\s*&\s*push\s*\n\s*id:\s*build\s*\n"
+            r"\s*uses:\s*docker/build-push-action@v\d+",
+            content,
+        ), "docker/build-push-action 步骤必须设 id: build 以便 attest 读取 digest"
+
+        # 验证 attest 步骤引用了 steps.build.outputs.digest
+        assert "subject-digest: ${{ steps.build.outputs.digest }}" in content, (
+            "attest 步骤的 subject-digest 必须从 steps.build.outputs.digest 读取"
         )
 
     def test_release_workflow_uses_gh_release_action(self) -> None:
