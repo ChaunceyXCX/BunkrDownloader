@@ -14,6 +14,7 @@
 - Provides progress indication during downloads.
 - Automatically creates a directory structure for organized storage.
 - Logs URLs that encounter errors for troubleshooting.
+- **Web Control Panel** (new) — `python3 web_main.py` 启动浏览器控制台，实时查看下载进度、暂停 / 恢复 / 重试任务，所有任务和文件状态以 SQLite 持久化，重启后自动从失败的文件续传。
 
 ## Dependencies
 
@@ -191,3 +192,90 @@ python3 downloader.py <bunkr_url> --max-retries 3
 
 The application logs any issues encountered during the download process in a file named `session.log`.
 Check this file for any URLs that may have been blocked or had errors.
+
+## Web Control Panel (Web UI)
+
+BunkrDownloader 现提供一个本地 Web 控制台，可以在浏览器中查看下载进度、管理任务、进行断点续传。
+
+### 启动
+
+```bash
+python3 web_main.py                # 默认 http://0.0.0.0:8765
+python3 web_main.py --port 9000    # 自定义端口
+python3 web_main.py --db /path/to/state.db   # 自定义 SQLite 路径
+```
+
+默认状态会保存到 `~/.bunkr_downloader/state.db`。
+
+启动后浏览器打开 `http://localhost:8765` 即可看到面板。
+
+### 功能
+
+- **任务列表**：以卡片形式展示所有任务（URL、状态、进度、文件数）
+- **详情面板**：点击任务后可查看进度条、统计指标、文件列表、事件日志
+- **任务控制**：
+  - `START` — 启动 pending/paused/failed 任务
+  - `PAUSE` — 暂停正在运行的任务
+  - `RESUME` — 恢复已暂停的任务
+  - `CANCEL` — 取消任务（中断当前下载）
+  - `RETRY FAILED` — 重置任务中所有 failed 文件并重启
+  - `DELETE` — 删除任务及所有历史
+- **文件级别重试**：在文件列表中对单个 failed 文件点击 `↻` 即可重试
+- **实时进度**：通过 WebSocket 推送每个文件的下载进度、状态变化
+- **状态持久化**：所有任务/文件/事件以 SQLite 持久化
+
+### 断点续传
+
+Web UI 与 CLI 共享同一套持久化机制。运行场景：
+
+1. 启动 Web 面板并创建任务下载 album
+2. 某些文件下载完成，某些失败
+3. `Ctrl+C` 杀掉服务，或重启进程
+4. 重新启动 `python3 web_main.py`
+5. Web 面板里上次运行中的任务会被自动标为 `paused`
+6. 点击 `START` / `RESUME` 启动任务时，**只会重新下载 pending 和 failed 的文件**，已完成的文件会被跳过
+
+### 编程接口
+
+Web 面板同时暴露 REST API（默认前缀 `/api`）：
+
+| Method | Path | 用途 |
+|---|---|---|
+| GET    | /api/health                          | 健康检查 |
+| GET    | /api/stats                           | 全局统计 |
+| GET    | /api/tasks                           | 列出任务 |
+| POST   | /api/tasks                           | 创建任务（body: `{url, options}`） |
+| GET    | /api/tasks/{id}                      | 任务详情 |
+| DELETE | /api/tasks/{id}                      | 删除任务 |
+| POST   | /api/tasks/{id}/start                | 启动 |
+| POST   | /api/tasks/{id}/pause                | 暂停 |
+| POST   | /api/tasks/{id}/resume               | 恢复 |
+| POST   | /api/tasks/{id}/cancel               | 取消 |
+| POST   | /api/tasks/{id}/retry                | 重试所有失败文件 |
+| GET    | /api/tasks/{id}/files                | 列出文件 |
+| GET    | /api/tasks/{id}/events               | 任务事件 |
+| POST   | /api/files/{id}/retry                | 重试单个文件 |
+| GET    | /api/events                          | 全局事件 |
+| WS     | /ws                                  | WebSocket 实时进度 |
+
+创建任务示例：
+
+```bash
+curl -X POST http://localhost:8765/api/tasks \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "url": "https://bunkr.si/a/XXXXXXXX",
+    "options": {
+      "max_retries": 5,
+      "connections": 4,
+      "clean_name": true
+    }
+  }'
+```
+
+### 单元测试
+
+```bash
+pip install pytest pytest-asyncio
+python3 -m pytest tests/ -v
+```

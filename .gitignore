@@ -160,3 +160,13 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+# BunkrDownloader Web UI
+*.bunkr_state.json
+.bunkr_downloader/
+state.db
+state.db-wal
+state.db-shm
+.pytest_cache/
+.pi-glla/
+

@@ -2,3 +2,11 @@ aiohttp==3.14.3
 beautifulsoup4==4.15.0
 Requests==2.34.2
 rich==15.0.0
+
+# Web UI 额外依赖（运行时已隐式由 aiohttp 提供）
+# 显式声明以便 requirements.txt 完整：
+# - websockets 已在系统 Python 提供（aiohttp 运行时依赖）
+
+# 开发 / 测试依赖（可选）
+# pytest
+# pytest-asyncio

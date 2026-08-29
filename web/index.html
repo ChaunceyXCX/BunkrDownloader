@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BunkrDownloader · Web Control Panel</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="grid-bg"></div>
+
+  <header class="topbar">
+    <div class="topbar__brand">
+      <div class="logo">
+        <span class="logo__bracket">[</span>
+        <span class="logo__text">BUNKR</span>
+        <span class="logo__bracket">]</span>
+      </div>
+      <div class="topbar__sub">download control panel · v1.0</div>
+    </div>
+    <div class="topbar__stats" id="globalStats">
+      <div class="stat">
+        <span class="stat__label">RUNNING</span>
+        <span class="stat__value" id="statRunning">0</span>
+      </div>
+      <div class="stat">
+        <span class="stat__label">QUEUED</span>
+        <span class="stat__value" id="statPending">0</span>
+      </div>
+      <div class="stat">
+        <span class="stat__label">PAUSED</span>
+        <span class="stat__value" id="statPaused">0</span>
+      </div>
+      <div class="stat">
+        <span class="stat__label">DONE</span>
+        <span class="stat__value" id="statCompleted">0</span>
+      </div>
+      <div class="stat stat--accent">
+        <span class="stat__label">FAILED</span>
+        <span class="stat__value" id="statFailed">0</span>
+      </div>
+      <div class="ws-indicator" id="wsIndicator" title="WebSocket status">
+        <span class="ws-dot"></span>
+        <span class="ws-text">CONNECTING</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- LEFT: Task list -->
+    <section class="panel panel--tasks">
+      <div class="panel__header">
+        <h2 class="panel__title">
+          <span class="panel__index">01</span>
+          TASKS
+        </h2>
+        <button class="btn btn--primary" id="newTaskBtn">+ NEW TASK</button>
+      </div>
+      <div class="task-list" id="taskList">
+        <div class="empty-state">
+          <div class="empty-state__icon">▢</div>
+          <div class="empty-state__text">No tasks yet</div>
+          <div class="empty-state__hint">Create one with the button above</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT: Detail + logs -->
+    <section class="panel panel--detail">
+      <div class="panel__header">
+        <h2 class="panel__title">
+          <span class="panel__index" id="detailIndex">02</span>
+          <span id="detailTitle">DETAIL</span>
+        </h2>
+        <div class="panel__actions" id="detailActions"></div>
+      </div>
+      <div class="detail" id="detailView">
+        <div class="empty-state">
+          <div class="empty-state__icon">◇</div>
+          <div class="empty-state__text">Select a task to view details</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- New task dialog -->
+  <div class="modal" id="newTaskModal" aria-hidden="true">
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__panel">
+      <div class="modal__header">
+        <h3 class="modal__title">CREATE NEW TASK</h3>
+        <button class="modal__close" data-close>×</button>
+      </div>
+      <form class="modal__body" id="newTaskForm">
+        <div class="form-field">
+          <label class="form-label">URL <span class="req">*</span></label>
+          <input class="form-input" type="text" name="url" required
+                 placeholder="https://bunkr.si/a/XXXXXXXX" />
+          <div class="form-hint">Single file or album URL</div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-field">
+            <label class="form-label">Max Retries</label>
+            <input class="form-input" type="number" name="max_retries" value="5" min="0" />
+          </div>
+          <div class="form-field">
+            <label class="form-label">Connections</label>
+            <input class="form-input" type="number" name="connections" value="4" min="1" />
+          </div>
+          <div class="form-field">
+            <label class="form-label">Rate Limit (KB/s)</label>
+            <input class="form-input" type="number" name="rate_limit" placeholder="unlimited" min="0" />
+          </div>
+          <div class="form-field">
+            <label class="form-label">Custom Path</label>
+            <input class="form-input" type="text" name="custom_path" placeholder="./Downloads" />
+          </div>
+        </div>
+
+        <div class="form-field form-field--check">
+          <label class="check">
+            <input type="checkbox" name="clean_name" />
+            <span class="check__box"></span>
+            <span class="check__label">Preserve original filenames</span>
+          </label>
+        </div>
+        <div class="form-field form-field--check">
+          <label class="check">
+            <input type="checkbox" name="no_album_folder" />
+            <span class="check__box"></span>
+            <span class="check__label">Save without album subfolder</span>
+          </label>
+        </div>
+        <div class="form-field form-field--check">
+          <label class="check">
+            <input type="checkbox" name="no_download_folder" />
+            <span class="check__box"></span>
+            <span class="check__label">Save without "Downloads" wrapper</span>
+          </label>
+        </div>
+
+        <div class="form-field">
+          <label class="form-label">Ignore (space-separated)</label>
+          <input class="form-input" type="text" name="ignore" placeholder=".zip .tmp" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">Include (space-separated)</label>
+          <input class="form-input" type="text" name="include" placeholder="mp4 mkv" />
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn--ghost" data-close>CANCEL</button>
+          <button type="submit" class="btn btn--primary">CREATE TASK</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div class="toasts" id="toasts"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
