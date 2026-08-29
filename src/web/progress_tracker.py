@@ -13,7 +13,6 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -441,18 +440,8 @@ class ProgressTracker:
     # ----- helpers -----
     def _task_payload(self, task_id: int) -> dict[str, Any]:
         """构造任务 payload（task + stats 合并）。"""
-        task = self.db.get_task(task_id)
-        if not task:
-            return {"task_id": task_id}
-        stats = self.db.get_task_stats(task_id)
-        # 解析 options_json
-        try:
-            options = json.loads(task.pop("options_json") or "{}")
-        except (json.JSONDecodeError, TypeError):
-            options = {}
-        task["options"] = options
-        task.update(stats)
-        return task
+        payload = self.db.to_payload(task_id)
+        return payload if payload is not None else {"task_id": task_id}
 
     def _get_task_id_for_file(self, file_id: int) -> int:
         """获取文件所属的任务 ID。"""

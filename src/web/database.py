@@ -166,6 +166,42 @@ class Database:
         with self._lock:
             self._conn.close()
 
+    # ============== 序列化辅助 ==============
+    @staticmethod
+    def _parse_options_json(task: dict) -> dict:
+        """从 task 字典中取出并解析 options_json，返回 options 字典。
+
+        供所有需要返回 task payload 的调用点复用，避免在多处重复 try/except。
+        """
+        try:
+            return json.loads(task.pop("options_json") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    def to_payload(self, task_id: int) -> dict | None:
+        """获取任务及其文件统计信息（Web API 用的完整 payload）。
+
+        Returns:
+            None 如果任务不存在
+        """
+        task = self.get_task(task_id)
+        if not task:
+            return None
+        stats = self.get_task_stats(task_id)
+        task["options"] = self._parse_options_json(task)
+        task.update(stats)
+        return task
+
+    def enrich_task_dict(self, task: dict) -> dict:
+        """丰富单个 task 字典：合并 stats + 解析 options。
+
+        输入输出的 task 是同一个 dict（原地修改）。供 list 场景使用。
+        """
+        stats = self.get_task_stats(task["id"])
+        task.update(stats)
+        task["options"] = self._parse_options_json(task)
+        return task
+
     def __enter__(self) -> "Database":
         return self
 

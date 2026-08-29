@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -19,7 +18,6 @@ from typing import TYPE_CHECKING, Any
 from src.crawlers.crawler_utils import get_download_info
 from src.downloaders.album_downloader import AlbumDownloader
 from src.downloaders.media_downloader import MediaDownloader
-from src.enums import UrlType
 from src.managers.live_manager import initialize_managers
 from src.misc.file_utils import create_download_directory
 from src.misc.general_utils import fetch_page
@@ -43,12 +41,9 @@ from .database import (
     EVENT_LEVEL_ERROR,
     EVENT_LEVEL_INFO,
     FILE_STATUS_COMPLETED,
-    FILE_STATUS_DOWNLOADING,
     FILE_STATUS_FAILED,
     FILE_STATUS_PENDING,
-    FILE_STATUS_SKIPPED,
     TASK_STATUS_CANCELED,
-    TASK_STATUS_COMPLETED,
     TASK_STATUS_FAILED,
     TASK_STATUS_PAUSED,
     TASK_STATUS_PENDING,

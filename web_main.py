@@ -12,11 +12,15 @@ import argparse
 import asyncio
 import logging
 import signal
-import sys
 from pathlib import Path
 
-from src.web.database import get_default_db_path
-from src.web.server import DEFAULT_STATIC_DIR, run_server
+# 顶层 import（pylint C0415：避免在函数内 import）
+from aiohttp import web
+
+from src.web.database import get_default_db_path, init_db
+from src.web.progress_tracker import ProgressTracker
+from src.web.server import DEFAULT_STATIC_DIR, create_app
+from src.web.task_manager import TaskManager
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,6 +51,21 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _build_banner(host: str, port: int, db_path: str, static_dir: Path | None) -> str:
+    """构建启动横幅。"""
+    static_label = str(static_dir or DEFAULT_STATIC_DIR)[:40]
+    return (
+        "\n"
+        "╔════════════════════════════════════════════════════╗\n"
+        "║  BunkrDownloader Web Control Panel                ║\n"
+        "╠════════════════════════════════════════════════════╣\n"
+        f"║  URL:    http://{host}:{port:<24}          ║\n"
+        f"║  DB:     {db_path[:40]:40s}  ║\n"
+        f"║  Static: {static_label:40s}  ║\n"
+        "╚════════════════════════════════════════════════════╝\n"
+    )
+
+
 def main() -> None:
     """主入口。"""
     args = parse_args()
@@ -58,15 +77,7 @@ def main() -> None:
     db_path = args.db or str(get_default_db_path())
     static_dir = Path(args.static_dir) if args.static_dir else None
 
-    print(f"""
-╔════════════════════════════════════════════════════╗
-║  BunkrDownloader Web Control Panel                ║
-╠════════════════════════════════════════════════════╣
-║  URL:    http://{args.host}:{args.port}                      ║
-║  DB:     {db_path[:40]:40s}  ║
-║  Static: {str(static_dir or DEFAULT_STATIC_DIR)[:40]:40s}  ║
-╚════════════════════════════════════════════════════╝
-""")
+    print(_build_banner(args.host, args.port, db_path, static_dir))
 
     # 优雅退出
     loop = asyncio.new_event_loop()
@@ -86,12 +97,6 @@ def main() -> None:
             pass
 
     async def _run() -> None:
-        from src.web.database import init_db
-        from src.web.progress_tracker import ProgressTracker
-        from src.web.server import create_app
-        from src.web.task_manager import TaskManager
-        from aiohttp import web
-
         db = init_db(db_path)
         tracker = ProgressTracker(db)
         task_manager = TaskManager(db, tracker)

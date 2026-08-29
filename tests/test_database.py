@@ -3,23 +3,15 @@
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from pathlib import Path
 
 import pytest
 
 from src.web.database import (
-    EVENT_LEVEL_ERROR,
-    EVENT_LEVEL_INFO,
     FILE_STATUS_COMPLETED,
     FILE_STATUS_DOWNLOADING,
     FILE_STATUS_FAILED,
     FILE_STATUS_PENDING,
-    FILE_STATUS_SKIPPED,
-    TASK_STATUS_COMPLETED,
-    TASK_STATUS_FAILED,
-    TASK_STATUS_PAUSED,
     TASK_STATUS_PENDING,
     TASK_STATUS_RUNNING,
     Database,

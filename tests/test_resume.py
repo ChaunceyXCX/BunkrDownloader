@@ -7,16 +7,13 @@ only the failed/pending files are re-downloaded — completed files are skipped.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from src.web.database import (
     FILE_STATUS_COMPLETED,
-    FILE_STATUS_DOWNLOADING,
     FILE_STATUS_FAILED,
-    FILE_STATUS_PENDING,
-    FILE_STATUS_SKIPPED,
     TASK_STATUS_COMPLETED,
     TASK_STATUS_FAILED,
     TASK_STATUS_PAUSED,
@@ -203,8 +200,8 @@ class TestTaskOptions:
         assert opts.custom_path is None
         assert opts.max_retries == 5
         assert opts.connections == 4
-        assert opts.ignore == []
-        assert opts.include == []
+        assert not opts.ignore
+        assert not opts.include
 
     def test_to_namespace_creates_args(self) -> None:
         """to_namespace 返回的对象应可供现有 downloader 使用。"""

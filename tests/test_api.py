@@ -6,7 +6,6 @@ Uses one event loop per test fixture (pytest-asyncio 1.4 + aiohttp pattern).
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -15,12 +14,7 @@ import pytest
 import pytest_asyncio
 from aiohttp.test_utils import TestClient, TestServer
 
-from src.web.database import (
-    FILE_STATUS_COMPLETED,
-    FILE_STATUS_FAILED,
-    TASK_STATUS_PENDING,
-    init_db,
-)
+from src.web.database import FILE_STATUS_FAILED, init_db
 from src.web.progress_tracker import ProgressTracker
 from src.web.server import create_app
 from src.web.task_manager import TaskManager

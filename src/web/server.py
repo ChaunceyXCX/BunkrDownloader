@@ -12,26 +12,13 @@ import asyncio
 import json
 import logging
 import mimetypes
-import os
-from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
 
 from aiohttp import WSMsgType, web
 
-from .database import (
-    FILE_STATUS_COMPLETED,
-    FILE_STATUS_DOWNLOADING,
-    FILE_STATUS_FAILED,
-    FILE_STATUS_PENDING,
-    TASK_STATUS_RUNNING,
-    Database,
-)
+from .database import TASK_STATUS_RUNNING, Database, init_db
 from .progress_tracker import ProgressTracker
-from .task_manager import TaskManager, TaskOptions
-
-if TYPE_CHECKING:
-    pass
+from .task_manager import TaskManager
 
 logger = logging.getLogger(__name__)
 
@@ -116,15 +103,9 @@ async def list_tasks(request: web.Request) -> web.Response:
     status = request.query.get("status")
     limit = int(request.query.get("limit", "100"))
     tasks = db.list_tasks(limit=limit, status=status)
-    # 附加统计
+    # 附加统计与解析 options
     for task in tasks:
-        stats = db.get_task_stats(task["id"])
-        task.update(stats)
-        try:
-            options = json.loads(task.pop("options_json") or "{}")
-        except (json.JSONDecodeError, TypeError):
-            options = {}
-        task["options"] = options
+        db.enrich_task_dict(task)
     return web.json_response({"tasks": tasks})
 
 
@@ -148,16 +129,9 @@ async def get_task(request: web.Request) -> web.Response:
     """获取任务详情。"""
     db: Database = request.app["db"]
     task_id = int(request.match_info["task_id"])
-    task = db.get_task(task_id)
+    task = db.to_payload(task_id)
     if not task:
         return web.json_response({"error": "not found"}, status=404)
-    stats = db.get_task_stats(task_id)
-    try:
-        options = json.loads(task.pop("options_json") or "{}")
-    except (json.JSONDecodeError, TypeError):
-        options = {}
-    task["options"] = options
-    task.update(stats)
     return web.json_response(task)
 
 
@@ -348,8 +322,6 @@ async def run_server(
     static_dir: Path | None = None,
 ) -> None:
     """启动 Web 服务器。"""
-    from .database import init_db
-
     db = init_db(db_path)
     tracker = ProgressTracker(db)
     task_manager = TaskManager(db, tracker)
