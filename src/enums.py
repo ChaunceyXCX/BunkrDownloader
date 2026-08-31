@@ -18,6 +18,7 @@ class HTTPStatus(IntEnum):
 
     OK = 200
     FORBIDDEN = 403
+    NOT_FOUND = 404
     TOO_MANY_REQUESTS = 429
     INTERNAL_ERROR = 500
     BAD_GATEWAY = 502

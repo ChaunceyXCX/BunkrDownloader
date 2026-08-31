@@ -267,7 +267,8 @@ class MediaDownloader:
         attempt: int,
     ) -> bool:
         """Handle exceptions during the request and manages retries."""
-        is_server_down = req_err.response is None or req_err.response.status_code in (
+        status = req_err.response.status_code if req_err.response is not None else None
+        is_server_down = req_err.response is None or status in (
             HTTPStatus.SERVER_DOWN,
             HTTPStatus.SERVICE_UNAVAILABLE,
         )
@@ -294,6 +295,21 @@ class MediaDownloader:
             )
             # Setting retries to 1 forces an immediate failure on the next check.
             self.retry_config.retries = 1
+            return False
+
+        # 404: CDN subdomain may be temporarily unavailable or routing changed.
+        # Mark offline so subsequent attempts skip this subdomain; the external retry
+        # will re-resolve the CDN URL from the item page.
+        if req_err.response.status_code == HTTPStatus.NOT_FOUND:
+            marked_subdomain = mark_subdomain_as_offline(
+                self.session_info.bunkr_status,
+                self.download_info.download_link,
+            )
+            self.live_manager.update_log(
+                event="CDN 404",
+                details=f"Subdomain '{marked_subdomain}' returned 404 for "
+                        f"{self.download_info.filename}. Will re-resolve on retry.",
+            )
             return False
 
         # Do not retry, exit the loop
