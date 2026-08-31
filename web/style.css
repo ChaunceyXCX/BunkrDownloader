@@ -507,6 +507,10 @@ button, input { font-family: inherit; font-size: inherit; }
 .file-row:last-child { border-bottom: none; }
 .file-row:hover { background: var(--bg-hover); }
 
+.file-row__name-wrap {
+  min-width: 0;
+  overflow: hidden;
+}
 .file-row__name {
   color: var(--text-primary);
   white-space: nowrap;

@@ -221,7 +221,15 @@ function renderTaskList() {
       </div>`;
     return;
   }
-  list.innerHTML = state.tasks.map(t => {
+  // 运行中 / 暂停 的任务置顶
+  const active = ['running', 'paused'];
+  const sorted = [...state.tasks].sort((a, b) => {
+    const ao = active.indexOf(a.status);
+    const bo = active.indexOf(b.status);
+    if (ao !== bo) return (ao === -1 ? 1 : 0) - (bo === -1 ? 1 : 0);
+    return b.id - a.id;
+  });
+  list.innerHTML = sorted.map(t => {
     const total = t.total_files || 0;
     const completed = t.completed_files || 0;
     const failed = t.failed_files || 0;
@@ -433,7 +441,7 @@ function renderDetail() {
             const canRetry = f.status === 'failed';
             return `
               <div class="file-row" title="${f.download_link ? escapeHtml(f.download_link) : ''}">
-                <div>
+                <div class="file-row__name-wrap">
                   <div class="file-row__name" title="${escapeHtml(f.filename || f.item_url)}">
                     ${escapeHtml(f.filename || '(unnamed)')}
                   </div>
