@@ -69,6 +69,10 @@ COPY --chown=bunkr:bunkr requirements.txt ./
 RUN mkdir -p /data /downloads \
     && chown -R bunkr:bunkr /data /downloads
 
+# 复制启动脚本并赋权限
+COPY --chown=bunkr:bunkr entrypoint.sh ./entrypoint.sh
+RUN chmod +x entrypoint.sh
+
 USER bunkr
 
 # Defaults — override at runtime with `docker run -e ...`
@@ -84,7 +88,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -fsS "http://127.0.0.1:${BUNKR_PORT}/api/health" || exit 1
 
 # tini reaps zombies and forwards signals (SIGTERM → clean shutdown)
-ENTRYPOINT ["/usr/bin/tini", "--"]
+# entrypoint.sh 确保 volume 挂载后目录权限正确
+ENTRYPOINT ["/usr/bin/tini", "--", "/app/entrypoint.sh"]
 CMD ["python3", "web_main.py", \
      "--host", "0.0.0.0", \
      "--port", "8765", \
