@@ -16,7 +16,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ghcr.io/lysagxra/bunkrdownloader-web:latest
+    image: ghcr.io/chaunceyxcx/bunkrdownloader:latest
     container_name: bunkr-web
     restart: unless-stopped
 

@@ -298,7 +298,7 @@ docker run -d --name bunkr-web \
   -p 8765:8765 \
   -v bunkr-data:/data \
   -v ./downloads:/downloads \
-  ghcr.io/lysagxra/bunkrdownloader-web:latest
+  ghcr.io/chaunceyxcx/bunkrdownloader:latest
 ```
 
 或使用 docker compose（推荐）：
@@ -337,7 +337,7 @@ docker run -d --name bunkr-web \
   -v bunkr-data:/data \
   -v $PWD/bunkr.toml:/app/bunkr.toml:ro \
   -e BUNKR_PORT=8765 \
-  ghcr.io/lysagxra/bunkrdownloader-web:latest
+  ghcr.io/chaunceyxcx/bunkrdownloader:latest
 ```
 
 ### 本地构建
@@ -352,7 +352,7 @@ docker run -d --rm -p 8765:8765 bunkr-web:dev
 ```bash
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  -t ghcr.io/lysagxra/bunkrdownloader-web:dev \
+  -t ghcr.io/chaunceyxcx/bunkrdownloader:dev \
   --push .
 ```
 
@@ -381,7 +381,7 @@ GH Actions 会自动：
 1. 运行多版本测试套件
 2. hadolint 静态检查
 3. 构建多架构镜像 (linux/amd64, linux/arm64)
-4. 推送镜像到 `ghcr.io/lysagxra/bunkrdownloader-web`，tag 包含 `v1.0.0` / `v1.0` / `1` / `latest` / `sha-xxxxxxx`
+4. 推送镜像到 `ghcr.io/chaunceyxcx/bunkrdownloader`，tag 包含 `v1.0.0` / `v1.0` / `1` / `latest` / `sha-xxxxxxx`
 5. 启动临时容器烟雾测试 `/api/health` `/api/stats` `/`
 6. 生成 CHANGELOG 并创建 GitHub Release
 
