@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import re
 from pathlib import Path
@@ -140,6 +141,9 @@ def get_item_filename(item_soup: BeautifulSoup) -> str:
         cf_email_tag.replace_with(decrypted_email)
 
     item_filename = item_filename_container.get_text()
+    # 解码 HTML 实体（&amp; → &）和 JS Unicode 转义（\\u0026 → &）
+    item_filename = html.unescape(item_filename)
+    item_filename = re.sub(r'\\u([0-9a-fA-F]{4})', lambda m: chr(int(m.group(1), 16)), item_filename)
 
     try:
         return item_filename.encode("latin1").decode("utf-8")
