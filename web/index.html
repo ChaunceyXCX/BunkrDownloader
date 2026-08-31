@@ -93,10 +93,11 @@
       </div>
       <form class="modal__body" id="newTaskForm">
         <div class="form-field">
-          <label class="form-label">URL <span class="req">*</span></label>
-          <input class="form-input" type="text" name="url" required
-                 placeholder="https://bunkr.si/a/XXXXXXXX" />
-          <div class="form-hint">Single file or album URL</div>
+          <label class="form-label">URLs <span class="req">*</span></label>
+          <textarea class="form-input form-input--textarea" name="url" required
+                    placeholder="https://bunkr.si/a/XXXXXXXX
+https://bunkr.si/v/YYYYYYYY" rows="4"></textarea>
+          <div class="form-hint">One URL per line — supports multiple URLs at once</div>
         </div>
 
         <div class="form-grid">

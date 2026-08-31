@@ -192,9 +192,16 @@ async function createTask(url, options) {
     method: 'POST',
     body: JSON.stringify({ url, options }),
   });
-  toast(`Task created (#${data.task_id})`, 'ok');
+  // 支持批量创建：返回 task_ids 数组或单个 task_id
+  const ids = data.task_ids;
+  const count = data.count || 1;
+  if (count > 1) {
+    toast(`Created ${count} tasks (#${Array.isArray(ids) ? ids.join(', #') : ids})`, 'ok');
+  } else {
+    toast(`Task created (#${ids})`, 'ok');
+  }
   await loadTasks();
-  return data.task_id;
+  return count > 1 ? ids : ids;
 }
 
 // ============== Renderers ==============
@@ -584,8 +591,9 @@ function init() {
     e.preventDefault();
     const form = e.target;
     const data = new FormData(form);
-    const url = (data.get('url') || '').toString().trim();
-    if (!url) {
+    const rawUrl = (data.get('url') || '').toString().trim();
+    const urls = rawUrl.split(/\n/).map(u => u.trim()).filter(Boolean);
+    if (urls.length === 0) {
       toast('URL is required', 'err');
       return;
     }
@@ -606,7 +614,7 @@ function init() {
     if (include) options.include = include.split(/\s+/);
 
     try {
-      await createTask(url, options);
+      await createTask(rawUrl, options);
       closeModal();
     } catch (e) { /* toast already shown */ }
   });

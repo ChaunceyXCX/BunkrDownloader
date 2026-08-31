@@ -110,18 +110,37 @@ async def list_tasks(request: web.Request) -> web.Response:
 
 
 async def create_task(request: web.Request) -> web.Response:
-    """创建新任务。"""
+    """创建新任务（支持单个 URL 或批量 URLs）。"""
     data = await request.json()
-    url = data.get("url", "").strip()
-    if not url:
+    raw_url = data.get("url", "")
+    options = data.get("options", {})
+
+    # 支持单字符串或字符串数组
+    if isinstance(raw_url, str):
+        urls = [u.strip() for u in raw_url.splitlines() if u.strip()]
+    elif isinstance(raw_url, list):
+        urls = [str(u).strip() for u in raw_url if str(u).strip()]
+    else:
+        urls = []
+
+    if not urls:
         return web.json_response(
             {"error": "url is required"}, status=400,
         )
-    options = data.get("options", {})
+
     task_manager: TaskManager = request.app["task_manager"]
-    task_id = await task_manager.create_task(url, options)
+    task_ids = []
+    for url in urls:
+        task_id = await task_manager.create_task(url, options)
+        task_ids.append(task_id)
+
     return web.json_response(
-        {"task_id": task_id, "status": "pending"}, status=201,
+        {
+            "task_ids": task_ids if len(task_ids) > 1 else task_ids[0],
+            "count": len(task_ids),
+            "status": "pending",
+        },
+        status=201,
     )
 
 
