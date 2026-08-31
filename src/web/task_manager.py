@@ -338,6 +338,17 @@ class TaskManager:
                 custom_path=options.custom_path,
                 no_download_folder=options.no_download_folder,
             )
+            if download_path is None:
+                error = f"Could not create download directory: {directory_name}"
+                self.db.update_task(
+                    task_id, status=TASK_STATUS_FAILED, error_message=error,
+                    finished_at=datetime.now(timezone.utc).isoformat(),
+                )
+                self.tracker.emit_log(
+                    task_id, "Download dir error", error, level=EVENT_LEVEL_ERROR,
+                )
+                self.tracker.emit_task_completed(task_id)
+                return
 
             # 更新 task 的 album 信息与路径
             self.db.update_task(

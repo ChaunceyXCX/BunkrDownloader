@@ -117,17 +117,24 @@ def create_download_directory(
     custom_path: str | None = None,
     *,
     no_download_folder: bool = False,
-) -> str:
-    """Create a directory for downloads if it doesn't exist."""
+) -> str | None:
+    """Create a directory for downloads if it doesn't exist.
+
+    Returns the path string on success, or None if the directory could not be created.
+    """
+    import os as _os
+
     # Sanitizing the directory name (album ID), if provided
     sanitized_directory_name = (
         sanitize_directory_name(directory_name) if directory_name else None
     )
 
     # Determine the base download path.
-    base_path = Path(custom_path or ".")  # default to current directory
+    # Priority: explicit custom_path > BUNKR_DOWNLOADS_DIR env var > /downloads (Docker) > cwd
+    base_str = custom_path or _os.environ.get("BUNKR_DOWNLOADS_DIR", "/downloads")
+    base_path = Path(base_str)
     if not no_download_folder:
-        base_path /= DOWNLOAD_FOLDER      # append DOWNLOAD_FOLDER only if needed
+        base_path /= DOWNLOAD_FOLDER
 
     # Albums containing a single file will be directly downloaded into the 'Downloads'
     # folder, without creating a subfolder for the album ID.
@@ -138,10 +145,9 @@ def create_download_directory(
     # Create the directory if it doesn't exist
     try:
         download_path.mkdir(parents=True, exist_ok=True)
-
-    except OSError:
-        logging.warning("Error creating 'Downloads' directory.")
-        sys.exit(1)
+    except OSError as exc:
+        logging.error("Error creating download directory '%s': %s", download_path, exc)
+        return None
 
     return str(download_path)
 

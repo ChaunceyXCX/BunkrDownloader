@@ -79,6 +79,7 @@ USER bunkr
 ENV BUNKR_HOST=0.0.0.0 \
     BUNKR_PORT=8765 \
     BUNKR_DB=/data/state.db \
+    BUNKR_DOWNLOADS_DIR=/downloads \
     BUNKR_LOG_LEVEL=INFO
 
 EXPOSE 8765

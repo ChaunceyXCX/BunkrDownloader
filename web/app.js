@@ -190,7 +190,7 @@ async function retryFile(fileId) {
 async function createTask(url, options) {
   const data = await api(API.tasks(), {
     method: 'POST',
-    body: JSON.stringify({ url, options }),
+    body: JSON.stringify({ url, options, auto_start: true }),
   });
   // 支持批量创建：返回 task_ids 数组或单个 task_id
   const ids = data.task_ids;

@@ -129,9 +129,12 @@ async def create_task(request: web.Request) -> web.Response:
         )
 
     task_manager: TaskManager = request.app["task_manager"]
+    auto_start = data.get("auto_start", True)
     task_ids = []
     for url in urls:
         task_id = await task_manager.create_task(url, options)
+        if auto_start:
+            await task_manager.start_task(task_id)
         task_ids.append(task_id)
 
     return web.json_response(
