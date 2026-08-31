@@ -481,7 +481,7 @@ button, input { font-family: inherit; font-size: inherit; }
 }
 .file-list__header {
   display: grid;
-  grid-template-columns: 1fr 80px 100px 80px 80px;
+  grid-template-columns: 1fr 80px 100px 70px 80px 60px;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   background: var(--bg-base);
@@ -495,7 +495,7 @@ button, input { font-family: inherit; font-size: inherit; }
 
 .file-row {
   display: grid;
-  grid-template-columns: 1fr 80px 100px 80px 80px;
+  grid-template-columns: 1fr 80px 100px 70px 80px 60px;
   gap: var(--space-3);
   align-items: center;
   padding: var(--space-2) var(--space-3);
@@ -541,6 +541,23 @@ button, input { font-family: inherit; font-size: inherit; }
   height: 100%;
   background: var(--accent);
   transition: width 0.3s ease;
+}
+
+/* ============== Pagination ============== */
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-top: var(--space-2);
+}
+.pagination__info {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 /* ============== Logs ============== */
@@ -778,12 +795,14 @@ button, input { font-family: inherit; font-size: inherit; }
   .topbar__stats { gap: var(--space-3); }
   .topbar__sub { display: none; }
   .file-list__header, .file-row {
-    grid-template-columns: 1fr 80px 80px;
+    grid-template-columns: 1fr 70px 80px;
   }
   .file-list__header > :nth-child(4),
   .file-list__header > :nth-child(5),
+  .file-list__header > :nth-child(6),
   .file-row > :nth-child(4),
-  .file-row > :nth-child(5) {
+  .file-row > :nth-child(5),
+  .file-row > :nth-child(6) {
     display: none;
   }
 }

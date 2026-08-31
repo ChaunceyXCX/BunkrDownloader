@@ -24,6 +24,8 @@ const state = {
   selectedTaskId: null,
   selectedTask: null,
   selectedFiles: [],
+  selectedFilesPage: 0,
+  selectedFilesTotal: 0,
   selectedEvents: [],
   ws: null,
   wsRetry: 0,
@@ -117,14 +119,17 @@ async function loadTask(id) {
   const task = await api(API.task(id));
   state.selectedTask = task;
   state.selectedTaskId = id;
-  state.selectedFiles = await loadFiles(id);
+  state.selectedFilesPage = 0;
+  state.selectedFiles = await loadFiles(id, 0);
   state.selectedEvents = await loadEvents(id);
   renderDetail();
   highlightActive();
 }
 
-async function loadFiles(id) {
-  const data = await api(API.taskFiles(id));
+async function loadFiles(id, page = 0) {
+  const data = await api(`${API.taskFiles(id)}?offset=${page * 50}&limit=50`);
+  state.selectedFilesPage = page;
+  state.selectedFilesTotal = data.total || 0;
   return data.files || [];
 }
 
@@ -407,12 +412,13 @@ function renderDetail() {
       </div>
 
       <div class="detail-section">
-        <div class="detail-section__title">FILES (${files.length})</div>
+        <div class="detail-section__title">FILES (${files.length} / ${state.selectedFilesTotal})</div>
         <div class="file-list">
           <div class="file-list__header">
             <div>NAME</div>
             <div>STATUS</div>
             <div>PROGRESS</div>
+            <div>SPEED</div>
             <div>SIZE</div>
             <div>RETRY</div>
           </div>
@@ -422,9 +428,11 @@ function renderDetail() {
             </div>
           ` : files.map(f => {
             const fileProgress = f.file_size > 0 ? (f.downloaded_bytes / f.file_size) * 100 : 0;
+            const speed = f.speed || 0;
+            const speedStr = speed > 0 ? formatBytes(speed) + '/s' : '—';
             const canRetry = f.status === 'failed';
             return `
-              <div class="file-row">
+              <div class="file-row" title="${f.download_link ? escapeHtml(f.download_link) : ''}">
                 <div>
                   <div class="file-row__name" title="${escapeHtml(f.filename || f.item_url)}">
                     ${escapeHtml(f.filename || '(unnamed)')}
@@ -442,6 +450,7 @@ function renderDetail() {
                   </div>
                   <span style="font-size: 9px; color: var(--text-muted); margin-top: 2px; display: block;">${fileProgress.toFixed(0)}%</span>
                 </div>
+                <div class="file-row__speed" style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);">${speedStr}</div>
                 <div class="file-row__size">${formatBytes(f.file_size)}</div>
                 <div>
                   <span style="color: var(--text-muted);">${f.retry_count || 0}</span>
@@ -451,6 +460,13 @@ function renderDetail() {
             `;
           }).join('')}
         </div>
+        ${state.selectedFilesTotal > 50 ? `
+          <div class="pagination">
+            <button class="btn btn--sm ${state.selectedFilesPage === 0 ? 'disabled' : ''}" id="filePagePrev">‹ Prev</button>
+            <span class="pagination__info">Page ${state.selectedFilesPage + 1} / ${Math.ceil(state.selectedFilesTotal / 50)}</span>
+            <button class="btn btn--sm ${state.selectedFilesPage * 50 + 50 >= state.selectedFilesTotal ? 'disabled' : ''}" id="filePageNext">Next ›</button>
+          </div>
+        ` : ''}
       </div>
 
       <div class="detail-section">
@@ -478,6 +494,29 @@ function renderDetail() {
       retryFile(fileId);
     });
   });
+
+  // Bind pagination buttons
+  const prevBtn = view.querySelector('#filePagePrev');
+  const nextBtn = view.querySelector('#filePageNext');
+  if (prevBtn) {
+    prevBtn.addEventListener('click', async () => {
+      if (state.selectedFilesPage > 0) {
+        state.selectedFilesPage--;
+        state.selectedFiles = await loadFiles(state.selectedTaskId, state.selectedFilesPage);
+        renderDetail();
+      }
+    });
+  }
+  if (nextBtn) {
+    nextBtn.addEventListener('click', async () => {
+      const totalPages = Math.ceil(state.selectedFilesTotal / 50);
+      if (state.selectedFilesPage + 1 < totalPages) {
+        state.selectedFilesPage++;
+        state.selectedFiles = await loadFiles(state.selectedTaskId, state.selectedFilesPage);
+        renderDetail();
+      }
+    });
+  }
 }
 
 // ============== WebSocket ==============

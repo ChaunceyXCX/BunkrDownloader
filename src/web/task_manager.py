@@ -66,7 +66,7 @@ class TaskOptions:
     """任务的下载选项。"""
 
     custom_path: str | None = None
-    no_download_folder: bool = False
+    no_download_folder: bool = True
     no_album_folder: bool = False
     clean_name: bool = False
     max_retries: int = 5
@@ -96,7 +96,7 @@ class TaskOptions:
         """从 dict 构造。"""
         return cls(
             custom_path=data.get("custom_path"),
-            no_download_folder=data.get("no_download_folder", False),
+            no_download_folder=data.get("no_download_folder", True),
             no_album_folder=data.get("no_album_folder", False),
             clean_name=data.get("clean_name", False),
             max_retries=data.get("max_retries", 5),
@@ -151,6 +151,8 @@ class TaskManager:
         self._cancel_flags: dict[int, asyncio.Event] = {}
         # 暂停信号
         self._pause_flags: dict[int, asyncio.Event] = {}
+        # 串行任务队列：等待启动的 task_id 列表
+        self._serial_queue: list[int] = []
         self._lock = asyncio.Lock()
         # 启动时恢复上次未完成的任务
         self._initialized = False
@@ -189,16 +191,35 @@ class TaskManager:
         return task_id
 
     async def start_task(self, task_id: int) -> bool:
-        """启动任务（异步执行，不阻塞）。"""
+        """启动任务（异步执行，不阻塞）。
+
+        为避免多个下载任务同时竞争带宽/连接/磁盘，启用串行队列：
+        - 已有任务在跑时，新任务进入 _serial_queue 等待
+        - 当前任务结束后，_run_task 的 finally 会从队列取出下一个任务启动
+        """
         async with self._lock:
-            if task_id in self._running_tasks:
-                logger.warning("Task %d is already running", task_id)
+            if task_id in self._running_tasks or task_id in self._serial_queue:
+                logger.warning("Task %d is already running or queued", task_id)
                 return False
             task_record = self.db.get_task(task_id)
             if not task_record:
                 return False
             if task_record["status"] == TASK_STATUS_RUNNING:
                 return False
+
+            # 已有任务在跑，排队等待
+            if self._running_tasks:
+                self._serial_queue.append(task_id)
+                self.db.update_task(task_id, status=TASK_STATUS_PENDING)
+                self.db.add_event(
+                    "Task queued",
+                    task_id=task_id,
+                    level=EVENT_LEVEL_INFO,
+                    details=f"Waiting for {len(self._running_tasks)} active task(s)",
+                )
+                logger.info("Task %d queued (waiting for %d active task(s))",
+                            task_id, len(self._running_tasks))
+                return True
 
             cancel_event = asyncio.Event()
             pause_event = asyncio.Event()
@@ -402,10 +423,49 @@ class TaskManager:
             )
             self.tracker.emit_task_completed(task_id)
         finally:
-            async with self._lock:
-                self._running_tasks.pop(task_id, None)
-                self._cancel_flags.pop(task_id, None)
-                self._pause_flags.pop(task_id, None)
+            await self._on_task_finished(task_id)
+
+    async def _on_task_finished(self, task_id: int) -> None:
+        """任务结束后的清理与队列调度。"""
+        async with self._lock:
+            self._running_tasks.pop(task_id, None)
+            self._cancel_flags.pop(task_id, None)
+            self._pause_flags.pop(task_id, None)
+            next_id = self._serial_queue.pop(0) if self._serial_queue else None
+
+        if next_id is None:
+            return
+
+        # 取出下一个排队任务启动（锁外启动以避免长事务）
+        next_record = self.db.get_task(next_id)
+        if not next_record:
+            # 任务记录已被删除，递归处理下一个
+            await self._on_task_finished(task_id)
+            return
+        if next_record["status"] in (TASK_STATUS_CANCELED, TASK_STATUS_FAILED):
+            # 已被取消或失败，跳过继续下一个
+            self.db.add_event(
+                "Task skipped",
+                task_id=next_id,
+                level=EVENT_LEVEL_INFO,
+                details=f"Status: {next_record['status']}",
+            )
+            await self._on_task_finished(task_id)
+            return
+
+        async with self._lock:
+            cancel_event = asyncio.Event()
+            pause_event = asyncio.Event()
+            self._cancel_flags[next_id] = cancel_event
+            self._pause_flags[next_id] = pause_event
+            coro = self._run_task(next_id, next_record, cancel_event, pause_event)
+            self._running_tasks[next_id] = asyncio.create_task(coro)
+            self.db.add_event(
+                "Task started from queue",
+                task_id=next_id,
+                level=EVENT_LEVEL_INFO,
+            )
+            logger.info("Task %d started from serial queue", next_id)
 
     async def _check_cancel_pause(
         self,
@@ -561,10 +621,16 @@ class TaskManager:
                 if not download_link:
                     raise RuntimeError("Could not resolve download URL")
 
-                # 更新 DB 文件名
+                # 更新 DB 文件名 + 直链
                 self.db.upsert_file(
                     task_id, item_url, filename=filename,
+                    download_link=download_link,
                     item_date=item_date.isoformat() if item_date else None,
+                )
+                self.tracker.emit_log(
+                    task_id, "Download URL resolved",
+                    download_link,
+                    level=EVENT_LEVEL_INFO,
                 )
 
                 # 跳过规则
@@ -657,7 +723,13 @@ class TaskManager:
                 raise RuntimeError("Could not resolve download URL")
             self.db.upsert_file(
                 task_id, item_url, filename=filename,
+                download_link=download_link,
                 item_date=item_date.isoformat() if item_date else None,
+            )
+            self.tracker.emit_log(
+                task_id, "Download URL resolved",
+                download_link,
+                level=EVENT_LEVEL_INFO,
             )
 
             from src.misc.file_utils import truncate_filename

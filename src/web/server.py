@@ -222,13 +222,15 @@ async def retry_file(request: web.Request) -> web.Response:
 
 
 async def list_files(request: web.Request) -> web.Response:
-    """列出任务下的文件。"""
+    """列出任务下的文件（支持分页）。"""
     db: Database = request.app["db"]
     task_id = int(request.match_info["task_id"])
     status = request.query.get("status")
-    limit = int(request.query.get("limit", "1000"))
-    files = db.list_files(task_id, status=status, limit=limit)
-    return web.json_response({"files": files})
+    limit = min(int(request.query.get("limit", "50")), 200)
+    offset = int(request.query.get("offset", "0"))
+    total = db.count_files(task_id, status=status)
+    files = db.list_files(task_id, status=status, limit=limit, offset=offset)
+    return web.json_response({"files": files, "total": total, "limit": limit, "offset": offset})
 
 
 async def list_events(request: web.Request) -> web.Response:

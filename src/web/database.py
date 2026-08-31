@@ -410,19 +410,36 @@ class Database:
         task_id: int,
         *,
         status: str | None = None,
-        limit: int = 1000,
+        limit: int = 100,
+        offset: int = 0,
     ) -> list[dict]:
-        """列出任务下的文件，可按状态过滤。"""
+        """列出任务下的文件，支持分页。"""
         query = "SELECT * FROM files WHERE task_id = ?"
         params: list[Any] = [task_id]
         if status:
             query += " AND status = ?"
             params.append(status)
-        query += " ORDER BY id ASC LIMIT ?"
-        params.append(limit)
+        query += " ORDER BY id ASC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
         with self._lock:
             rows = self._conn.execute(query, params).fetchall()
         return [dict(row) for row in rows]
+
+    def count_files(
+        self,
+        task_id: int,
+        *,
+        status: str | None = None,
+    ) -> int:
+        """统计文件数量。"""
+        query = "SELECT COUNT(*) as cnt FROM files WHERE task_id = ?"
+        params: list[Any] = [task_id]
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        with self._lock:
+            row = self._conn.execute(query, params).fetchone()
+        return int(row["cnt"]) if row else 0
 
     def update_file(
         self,

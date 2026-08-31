@@ -96,6 +96,7 @@ class ProgressTracker:
         self._loop: asyncio.AbstractEventLoop | None = None
         # 用于节流 progress 写入（避免每 chunk 都写 DB）
         self._last_progress_write: dict[int, float] = {}
+        self._last_progress_bytes: dict[int, int] = {}  # 上次记录的已下载字节，用于计算速度
         self._progress_write_interval = 0.5  # 秒
 
     # ----- WebSocket 管理 -----
@@ -318,6 +319,14 @@ class ProgressTracker:
         size = file_record.get("file_size") or 0
         if size > 0:
             progress = min(100.0, downloaded_bytes / size * 100)
+        # 计算速度（bytes/s）
+        speed = 0.0
+        prev_bytes = self._last_progress_bytes.get(file_id, downloaded_bytes)
+        if prev_bytes != downloaded_bytes and now > last:
+            elapsed = now - last
+            if elapsed > 0:
+                speed = (downloaded_bytes - prev_bytes) / elapsed
+        self._last_progress_bytes[file_id] = downloaded_bytes
         self.broadcast(ProgressEvent(
             type=EVT_FILE_PROGRESS,
             task_id=file_record["task_id"],
@@ -326,6 +335,7 @@ class ProgressTracker:
                 "downloaded_bytes": downloaded_bytes,
                 "file_size": size,
                 "progress": round(progress, 2),
+                "speed": round(speed, 1),
                 "status": FILE_STATUS_DOWNLOADING,
             },
         ))
