@@ -344,7 +344,11 @@ function renderDetail() {
   const downloadedFmt = formatBytes(downloaded);
   const totalBytesFmt = formatBytes(totalBytes);
 
-  const files = state.selectedFiles || [];
+  const files = (state.selectedFiles || []).sort((a, b) => {
+    const aDown = a.status === 'downloading' ? 1 : 0;
+    const bDown = b.status === 'downloading' ? 1 : 0;
+    return bDown - aDown;
+  });
   const events = state.selectedEvents || [];
 
   view.innerHTML = `
