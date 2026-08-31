@@ -11,6 +11,7 @@ This module provides:
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse, urlunparse
@@ -30,7 +31,10 @@ _DEFAULT_TIMEOUT = 10
 
 def unescape_js_path(value: str) -> str:
     """Normalize JavaScript-escaped URL fragments."""
-    return value.replace(r"\/", "/").replace(r"\\", "\\")
+    value = value.replace(r"\/", "/").replace(r"\\", "\\")
+    # 解码 JS Unicode 转义序列（如 \u0026 → &）
+    value = re.sub(r"\\u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), value)
+    return value
 
 
 def extract_page_vars(soup: BeautifulSoup) -> dict[str, str]:
@@ -146,6 +150,9 @@ async def get_api_response(
 
     if not cdn_url and not unsigned_url:
         return None
+
+    # CDN URL 可能含 JS 转义序列（如 \u0026），统一解码
+    cdn_url = unescape_js_path(cdn_url) if cdn_url else None
 
     media_slug = PurePosixPath(urlparse(unsigned_url or item_url).path).name
     media_path = urlparse(cdn_url).path if cdn_url else f"/storage/media/{media_slug}"
