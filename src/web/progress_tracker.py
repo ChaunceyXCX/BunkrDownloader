@@ -121,6 +121,7 @@ class ProgressTracker:
         # 优先用 run_coroutine_threadsafe 在主事件循环中发送
         if self._loop is not None and self._loop.is_running():
             try:
+                # 持有 Future 引用避免被 GC 提前回收导致 'coroutine never awaited'
                 asyncio.run_coroutine_threadsafe(
                     self._broadcast_async(payload),
                     self._loop,
