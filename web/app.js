@@ -444,7 +444,7 @@ function renderDetail() {
             const speedStr = speed > 0 ? formatBytes(speed) + '/s' : '—';
             const canRetry = f.status === 'failed';
             return `
-              <div class="file-row" title="${f.download_link ? escapeHtml(f.download_link) : ''}">
+              <div class="file-row ${f.status === 'downloading' ? 'status-downloading' : ''}" title="${f.download_link ? escapeHtml(f.download_link) : ''}">
                 <div class="file-row__name-wrap">
                   <div class="file-row__name" title="${escapeHtml(f.filename || f.item_url)}">
                     ${escapeHtml(f.filename || '(unnamed)')}

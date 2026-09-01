@@ -506,6 +506,8 @@ button, input { font-family: inherit; font-size: inherit; }
 }
 .file-row:last-child { border-bottom: none; }
 .file-row:hover { background: var(--bg-hover); }
+.file-row.status-downloading { background: rgba(0, 212, 255, 0.04); }
+.file-row.status-downloading:hover { background: rgba(0, 212, 255, 0.08); }
 
 .file-row__name-wrap {
   min-width: 0;
