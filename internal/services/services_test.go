@@ -1,6 +1,7 @@
 package services_test
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -597,6 +598,41 @@ func TestSystemHealthStatsSettings(t *testing.T) {
 	}
 	if ok, _ := e.system.RevealPath(""); !ok {
 		t.Error("RevealPath(\"\") failed")
+	}
+}
+
+func TestSetDownloadDir(t *testing.T) {
+	e := newEnv(t)
+	token := e.member_("dler")
+	newDir := filepath.Join(t.TempDir(), "mydl", "bunkr")
+
+	settings, apiErr := e.system.SetDownloadDir(token, newDir)
+	if apiErr != nil {
+		t.Fatalf("SetDownloadDir: %v", apiErr)
+	}
+	if settings.DownloadDir != newDir {
+		t.Errorf("settings.DownloadDir = %q, want %q", settings.DownloadDir, newDir)
+	}
+	if got := e.dl.DownloadDir(); got != newDir {
+		t.Errorf("manager DownloadDir = %q, want %q", got, newDir)
+	}
+	if fi, err := os.Stat(newDir); err != nil || !fi.IsDir() {
+		t.Errorf("download dir was not created: %s (%v)", newDir, err)
+	}
+	// The choice is persisted for the next launch.
+	prefs := services.LoadDesktopPrefs(e.app.StorePath())
+	if prefs.DownloadDir != newDir {
+		t.Errorf("persisted DownloadDir = %q, want %q", prefs.DownloadDir, newDir)
+	}
+
+	// Empty / whitespace paths are rejected.
+	if _, apiErr := e.system.SetDownloadDir(token, "   "); apiErr == nil {
+		t.Error("empty path was accepted")
+	}
+	// An invalid token is rejected (an empty token falls back to the desktop
+	// session, so it is intentionally allowed).
+	if _, apiErr := e.system.SetDownloadDir("garbage.token", newDir); apiErr == nil {
+		t.Error("an invalid token was accepted")
 	}
 }
 

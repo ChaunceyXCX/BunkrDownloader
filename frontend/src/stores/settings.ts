@@ -84,6 +84,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const version = ref('')
   const downloadDir = ref('')
   const aria2 = ref<Aria2Info>({ available: false, version: '' })
+  const isDesktop = ref(false)
   const runtimeLoaded = ref(false)
   const runtimeLoading = ref(false)
 
@@ -119,6 +120,7 @@ export const useSettingsStore = defineStore('settings', () => {
       }
       if (serverSettings.status === 'fulfilled') {
         downloadDir.value = serverSettings.value.download_dir
+        isDesktop.value = Boolean(serverSettings.value.features?.desktop)
         if (!version.value) version.value = serverSettings.value.version
       }
       runtimeLoaded.value = true
@@ -159,6 +161,7 @@ export const useSettingsStore = defineStore('settings', () => {
     version,
     downloadDir,
     aria2,
+    isDesktop,
     runtimeLoaded,
     runtimeLoading,
     ignoreText,

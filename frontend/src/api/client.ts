@@ -461,6 +461,7 @@ function toSettings(s: Bindings.Settings): AppSettings {
     features: {
       aria2: Boolean(features.aria2),
       payment: String(features.payment ?? ''),
+      desktop: Boolean(features.desktop),
     },
   }
 }
@@ -654,6 +655,9 @@ export const systemApi = {
   stats: async (): Promise<Stats> => toStats(await call(SystemService.Stats(token()), { label: 'stats' })),
   settings: async (): Promise<AppSettings> =>
     toSettings(await callValue(SystemService.Settings(), { label: 'settings' })),
+  /** Desktop-only: changes and persists where new downloads are stored. */
+  setDownloadDir: async (path: string): Promise<AppSettings> =>
+    toSettings(await call(SystemService.SetDownloadDir(token(), path), { label: 'settings' })),
   /** Desktop-only: reveals the download folder in the OS file manager. */
   openDownloadDir: async (): Promise<string> => {
     const [ok, message] = await SystemService.OpenDownloadDir()

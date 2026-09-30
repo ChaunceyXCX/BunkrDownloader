@@ -106,8 +106,16 @@ func run() error {
 	}
 
 	// --- orchestration ------------------------------------------------------
+	// A download dir chosen in Settings overrides the env / default and survives
+	// restarts. If none was persisted, fall back to the configured default.
+	prefs := services.LoadDesktopPrefs(cfg.DataDir)
+	startupDir := cfg.DownloadDir
+	if prefs.DownloadDir != "" {
+		startupDir = prefs.DownloadDir
+	}
+
 	mgr := downloads.New(downloads.Config{
-		DownloadDir:       cfg.DownloadDir,
+		DownloadDir:       startupDir,
 		FreeConcurrency:   cfg.FreeConcurrency,
 		MemberConcurrency: cfg.MemberConcurrency,
 		PollInterval:      time.Second,
@@ -124,7 +132,7 @@ func run() error {
 	authSvc := services.NewAuthService(appCtx)
 	taskSvc := services.NewTaskService(appCtx)
 	memberSvc := services.NewMembershipService(appCtx)
-	systemSvc := services.NewSystemService(appCtx, cfg.DownloadDir)
+	systemSvc := services.NewSystemService(appCtx, startupDir)
 
 	// The asset handler serves from the root of the given FS, but //go:embed
 	// keeps the "frontend/dist" prefix. Sub it so that "/" resolves to

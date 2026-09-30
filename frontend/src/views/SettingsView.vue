@@ -162,6 +162,35 @@ async function restartAria2(): Promise<void> {
   }
 }
 
+/* ---------------- download directory --------------- */
+const dlDir = ref(settings.downloadDir)
+const dirSaveBusy = ref(false)
+watch(
+  () => settings.downloadDir,
+  (v) => {
+    if (dlDir.value.trim() !== v) dlDir.value = v
+  },
+)
+
+async function saveDownloadDir(): Promise<void> {
+  const path = dlDir.value.trim()
+  if (!path) {
+    toast.error(i18n.t('settings.downloadDirEmpty'))
+    return
+  }
+  if (path === settings.downloadDir) return
+  dirSaveBusy.value = true
+  try {
+    const updated = await systemApi.setDownloadDir(path)
+    settings.downloadDir = updated.download_dir
+    toast.success(i18n.t('settings.downloadDirSaved'))
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : i18n.t('error.generic'))
+  } finally {
+    dirSaveBusy.value = false
+  }
+}
+
 /* ---------------- clear local data --------------- */
 const clearOpen = ref(false)
 function clearLocal(): void {
@@ -285,7 +314,27 @@ const langOptions = [
             <span class="bd-set__k">{{ i18n.t('settings.uptime') }}</span>
             <span class="bd-set__v" data-numeric>{{ uptimeSeconds === null ? '—' : formatDuration(uptimeSeconds) }}</span>
           </div>
-          <div class="bd-set__kv">
+          <template v-if="settings.isDesktop">
+            <div class="bd-set__dir">
+              <BaseInput
+                v-model="dlDir"
+                :label="i18n.t('settings.downloadDir')"
+                :hint="i18n.t('settings.downloadDirHint')"
+                :placeholder="i18n.t('settings.downloadDirUnknown')"
+              />
+              <BaseButton
+                variant="primary"
+                size="sm"
+                icon="download"
+                :loading="dirSaveBusy"
+                :label="i18n.t('common.save')"
+                @click="saveDownloadDir"
+              >
+                {{ i18n.t('common.save') }}
+              </BaseButton>
+            </div>
+          </template>
+          <div v-else class="bd-set__kv">
             <span class="bd-set__k">{{ i18n.t('settings.downloadDir') }}</span>
             <span class="bd-set__v">{{ settings.downloadDir || i18n.t('settings.downloadDirUnknown') }}</span>
           </div>
@@ -443,6 +492,12 @@ const langOptions = [
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+}
+.bd-set__dir {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: end;
 }
 .bd-set__checks {
   display: flex;

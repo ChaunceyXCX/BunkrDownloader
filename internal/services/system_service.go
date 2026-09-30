@@ -16,11 +16,17 @@ type SystemService struct {
 	app       *App
 	startedAt time.Time
 	downloads string
+	dataDir   string
 }
 
 // NewSystemService builds the binding for SystemService.
 func NewSystemService(a *App, downloadDir string) *SystemService {
-	return &SystemService{app: a, startedAt: time.Now(), downloads: downloadDir}
+	return &SystemService{
+		app:       a,
+		startedAt: time.Now(),
+		downloads: downloadDir,
+		dataDir:   a.StorePath(),
+	}
 }
 
 // Health mirrors GET /api/health.
@@ -154,6 +160,27 @@ func (s *SystemService) Settings() *Settings {
 			},
 		},
 	}
+}
+
+// SetDownloadDir changes where new downloads are stored and persists the
+// choice so it survives a restart. Tasks that already resolved to a custom
+// path keep it; existing default-path tasks keep the folder they were created
+// with. Returns the refreshed settings so the UI can re-sync immediately.
+func (s *SystemService) SetDownloadDir(token, path string) (*Settings, *APIError) {
+	if _, apiErr := s.app.resolveUserID(token); apiErr != nil {
+		return nil, apiErr
+	}
+	if err := s.app.Manager.SetDownloadDir(path); err != nil {
+		return nil, &APIError{Code: CodeBadRequest, Message: err.Error()}
+	}
+	s.downloads = s.app.Manager.DownloadDir()
+	prefs := LoadDesktopPrefs(s.dataDir)
+	prefs.DownloadDir = s.downloads
+	if err := prefs.save(s.dataDir); err != nil {
+		s.app.Log.Warn("persist download dir", "error", err)
+	}
+	s.app.Log.Info("download dir changed", "dir", s.downloads)
+	return s.Settings(), nil
 }
 
 // OpenDownloadDir reveals the download folder in the OS file manager.

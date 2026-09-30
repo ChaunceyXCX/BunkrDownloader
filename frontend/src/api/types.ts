@@ -194,7 +194,7 @@ export interface Stats {
 export interface AppSettings {
   download_dir: string
   version: string
-  features: { aria2: boolean; payment: string }
+  features: { aria2: boolean; payment: string; desktop?: boolean }
 }
 
 /* ---------- error envelope §0.1 ---------- */

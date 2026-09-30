@@ -12,6 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -547,6 +550,33 @@ func (m *Manager) stopRunner(ctx context.Context, taskID int64, status, reason s
 		_ = m.st.UpdateTask(taskID, store.TaskUpdate{Status: &status, FinishedAt: &now, Speed: i64Ptr(0)})
 	}
 	_ = reason
+}
+
+// DownloadDir returns the current base download directory.
+func (m *Manager) DownloadDir() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cfg.DownloadDir
+}
+
+// SetDownloadDir changes the base directory used for new tasks (tasks that
+// already picked a CustomPath keep theirs). It validates and creates the
+// directory first, then swaps the config value under lock.
+func (m *Manager) SetDownloadDir(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("下载目录不能为空")
+	}
+	abs, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(abs, 0o755); err != nil {
+		return fmt.Errorf("创建下载目录失败: %w", err)
+	}
+	m.mu.Lock()
+	m.cfg.DownloadDir = abs
+	m.mu.Unlock()
+	return nil
 }
 
 // IsRunning reports whether a task currently occupies a runner slot.

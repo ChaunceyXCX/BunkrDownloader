@@ -70,6 +70,23 @@ export function RevealPath(path) {
 }
 
 /**
+ * SetDownloadDir changes where new downloads are stored and persists the
+ * choice so it survives a restart. Tasks that already resolved to a custom
+ * path keep it; existing default-path tasks keep the folder they were created
+ * with. Returns the refreshed settings so the UI can re-sync immediately.
+ * @param {string} token
+ * @param {string} path
+ * @returns {$CancellablePromise<[$models.Settings | null, $models.APIError | null]>}
+ */
+export function SetDownloadDir(token, path) {
+    return $Call.ByID(596926573, token, path).then(/** @type {($result: any) => any} */(($result) => {
+        $result[0] = $$createType3($result[0]);
+        $result[1] = $$createType5($result[1]);
+        return $result;
+    }));
+}
+
+/**
  * Settings returns the non-secret runtime configuration.
  * @returns {$CancellablePromise<$models.Settings | null>}
  */
@@ -86,8 +103,8 @@ export function Settings() {
  */
 export function Stats(token) {
     return $Call.ByID(1949627277, token).then(/** @type {($result: any) => any} */(($result) => {
-        $result[0] = $$createType5($result[0]);
-        $result[1] = $$createType7($result[1]);
+        $result[0] = $$createType7($result[0]);
+        $result[1] = $$createType5($result[1]);
         return $result;
     }));
 }
@@ -97,7 +114,7 @@ const $$createType0 = $models.Health.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = $models.Settings.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = $models.Stats.createFrom;
+const $$createType4 = $models.APIError.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = $models.APIError.createFrom;
+const $$createType6 = $models.Stats.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);
