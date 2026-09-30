@@ -25,6 +25,9 @@ const fileLabel = computed(() =>
     ? `${formatCount(auth.filesUsed)} ${i18n.t('common.unlimited')}`
     : `${auth.filesUsed}/${auth.filesLimit}`,
 )
+// Concurrency is unlimited (config default 0) — only link/file counts gate an
+// account now, so hide the running/slot row instead of showing "0 / 0".
+const concurrencyUnlimited = computed(() => auth.concurrentLimit <= 0)
 
 const items = computed<DropdownItem[]>(() => [{ key: 'membership', label: i18n.t('membership.title'), icon: 'crown' }])
 function onSelect(): void {
@@ -87,7 +90,7 @@ function onSelect(): void {
           />
         </div>
 
-        <div class="bd-quota__rowhead bd-quota__conc">
+        <div v-if="!concurrencyUnlimited" class="bd-quota__rowhead bd-quota__conc">
           <span>{{ i18n.t('quota.concurrent') }}</span>
           <span data-numeric class="bd-quota__num">
             {{ auth.concurrentRunning }} / {{ auth.concurrentLimit }}

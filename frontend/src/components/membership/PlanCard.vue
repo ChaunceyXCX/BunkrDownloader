@@ -72,7 +72,7 @@ const isActiveHere = computed(() => props.current)
 
     <div class="bd-plan__cta">
       <BaseButton
-        v-if="isActiveHere && !isFree"
+        v-if="isActiveHere"
         variant="ghost"
         block
         :label="i18n.t('membership.currentBadge')"
@@ -81,16 +81,7 @@ const isActiveHere = computed(() => props.current)
         {{ i18n.t('membership.currentBadge') }}
       </BaseButton>
       <BaseButton
-        v-else-if="isFree"
-        variant="ghost"
-        block
-        :label="i18n.t('membership.currentBadge')"
-        disabled
-      >
-        {{ i18n.t('membership.currentBadge') }}
-      </BaseButton>
-      <BaseButton
-        v-else
+        v-else-if="!isFree"
         variant="primary"
         block
         :label="i18n.t('membership.choose')"
@@ -99,6 +90,9 @@ const isActiveHere = computed(() => props.current)
       >
         {{ i18n.t('membership.choose') }}
       </BaseButton>
+      <!-- The free tier renders no CTA when it is not the active plan (an
+           active member cannot downgrade mid-term) so that exactly ONE plan
+           ever shows the "当前方案" badge. -->
     </div>
   </div>
 </template>

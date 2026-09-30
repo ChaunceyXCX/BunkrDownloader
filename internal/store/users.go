@@ -489,7 +489,7 @@ func buildPlans(free, member QuotaLimits) []Plan {
 			Features: []string{
 				"最多添加 5 个链接",
 				"最多下载 50 个文件",
-				"同时运行 1 个下载任务",
+				"不限并发，全部任务同时下载",
 			},
 			LinksLimit: free.Links, FilesLimit: free.Files, Concurrency: free.Concurrent,
 			Limits: PlanLimits{Links: free.Links, Files: free.Files, Concurrent: free.Concurrent},
@@ -498,7 +498,7 @@ func buildPlans(free, member QuotaLimits) []Plan {
 			ID: "member_monthly", Name: "会员 · 月付", PriceCents: 990, Currency: "CNY", PeriodDays: 30,
 			Features: []string{
 				"无限链接、无限文件",
-				"同时运行 5 个下载任务",
+				"不限并发，全部任务同时下载",
 				"高优先级队列",
 				"全功能支持",
 			},
@@ -509,7 +509,7 @@ func buildPlans(free, member QuotaLimits) []Plan {
 			ID: "member_yearly", Name: "会员 · 年付", PriceCents: 9900, Currency: "CNY", PeriodDays: 365,
 			Features: []string{
 				"无限链接、无限文件",
-				"同时运行 5 个下载任务",
+				"不限并发，全部任务同时下载",
 				"高优先级队列",
 				"全功能支持",
 				"比月付省 17%",
