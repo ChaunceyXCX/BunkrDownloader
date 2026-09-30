@@ -1,7 +1,23 @@
 import { fileURLToPath, URL } from 'node:url'
+import { writeFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
+import type { Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
+
+// `emptyOutDir` wipes dist/ on every build, which would also delete the tracked
+// `dist/.gitkeep` that main.go's `//go:embed all:frontend/dist` needs on a fresh
+// checkout. Re-create it in-process (cross-platform; a `touch` shell command
+// does not exist on Windows).
+function keepGitkeep(): Plugin {
+  return {
+    name: 'keep-dist-gitkeep',
+    apply: 'build',
+    closeBundle() {
+      writeFileSync(fileURLToPath(new URL('./dist/.gitkeep', import.meta.url)), '')
+    },
+  }
+}
 
 // BunkrDownloader frontend build.
 //
@@ -11,7 +27,7 @@ import tailwindcss from '@tailwindcss/vite'
 // Wails asset handler) mount the app at the origin root.
 export default defineConfig({
   base: '/',
-  plugins: [vue(), tailwindcss()],
+  plugins: [vue(), tailwindcss(), keepGitkeep()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
