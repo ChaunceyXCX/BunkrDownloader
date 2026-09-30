@@ -17,6 +17,10 @@ tasks:
     cmds:
       - cd {{.FRONTEND_DIR}} && npm install --silent
       - cd {{.FRONTEND_DIR}} && npm run build
+      # Vite's `emptyOutDir` wipes dist/ including the tracked .gitkeep that
+      # main.go://go:embed all:frontend/dist needs on a fresh checkout.
+      # Re-create it so the committed tree always carries the marker.
+      - touch {{.FRONTEND_DIR}}/dist/.gitkeep
 
   report:icons:
     summary: Reports where the icon assets live
