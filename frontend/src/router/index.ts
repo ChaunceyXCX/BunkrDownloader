@@ -13,6 +13,14 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     {
+      // The desktop shell and any root-mounted deployment open at "/", so
+      // send it through the auth guard to /app or /login. getToken() is used
+      // instead of the auth store because a Pinia store cannot be created
+      // while this module is being evaluated.
+      path: '/',
+      redirect: () => (getToken() ? { name: 'dashboard' } : { name: 'login' }),
+    },
+    {
       path: '/login',
       name: 'login',
       component: () => import('@/views/LoginView.vue'),
