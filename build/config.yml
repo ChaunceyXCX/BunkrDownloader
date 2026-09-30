@@ -1,7 +1,9 @@
 # Wails v3 build configuration for BunkrDownloader.
 #
-# The frontend dev server is started by `wails3 dev`; the Go side reaches it
-# through FRONTEND_DEVSERVER_URL, which wails3 injects automatically.
+# `wails3 dev` reads the `dev_mode` block below. Without `dev_mode.root_path`
+# the CLI aborts with "root path is required", so this section is mandatory
+# for development mode.
+
 name: BunkrDownloader
 outputfilename: BunkrDownloader
 
@@ -13,6 +15,36 @@ frontend:
     serverUrl: auto
   build:
     command: npm run build
+
+# Dev mode: watch Go sources, run Vite in the background, then rebuild + relaunch.
+dev_mode:
+  root_path: .
+  log_level: warn
+  debounce: 1000
+  ignore:
+    dir:
+      - .git
+      - node_modules
+      - frontend
+      - bin
+    file:
+      - .DS_Store
+      - .gitignore
+      - .gitkeep
+    watched_extension:
+      - "*.go"
+    git_ignore: true
+  executes:
+    - cmd: wails3 task frontend:install
+      type: once
+    - cmd: wails3 task frontend:dev
+      type: background
+    - cmd: go mod tidy
+      type: blocking
+    - cmd: wails3 task build
+      type: blocking
+    - cmd: wails3 task run
+      type: primary
 
 # aria2c is shipped next to the executable; the runtime resolves it from the
 # application directory first, then from PATH.

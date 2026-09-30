@@ -36,3 +36,15 @@ tasks:
     summary: Runs the app in development mode
     cmds:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+
+  frontend:install:
+    summary: Installs frontend dependencies (used by dev mode)
+    dir: frontend
+    cmds:
+      - npm install
+
+  frontend:dev:
+    summary: Runs the Vite dev server (used by dev mode)
+    dir: frontend
+    cmds:
+      - npm run dev

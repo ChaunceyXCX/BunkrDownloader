@@ -70,8 +70,17 @@ go mod download
 ### 开发模式（前端热更新）
 
 ```bash
-wails3 dev -config ./build/config.yml -loglevel Debug
+wails3 dev -config ./build/config.yml
 ```
+
+`wails3 dev` 从 `build/config.yml` 的 `dev_mode` 段读取配置（`root_path`
+必填，否则报 `root path is required`）。它会：后台启动 Vite（默认
+<http://localhost:5173>）→ 编译并启动桌面应用 → 监视 `*.go` 改动自动重建重启。
+
+> beta.26 的 `wails3 dev` 只支持 `-config` / `-port` / `-nocolour` / `-s`，
+> **没有** `-loglevel`（日志级别在 `build/config.yml` 的 `dev_mode.log_level` 里设）。
+>
+> 等价方式：`wails3 task dev`（Taskfile 已封装同样的命令）。
 
 ### 生产构建（含前端，产物在 bin/）
 
