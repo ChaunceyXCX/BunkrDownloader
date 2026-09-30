@@ -1,390 +1,156 @@
-# Bunkr Downloader
+# BunkrDownloader
 
-> A Python Bunkr downloader that fetches images and videos from URLs. It supports both Bunkr albums and individual file URLs, logs issues, and enables concurrent downloads for efficiency.
+一个用 **Go + Gin** 重写的 Bunkr 相册批量下载器：**aria2** 负责实际传输，
+**Vue 3 + TypeScript + Tailwind** 提供控制台界面，内置**账号体系**与**会员额度**。
 
-![Demo](https://github.com/Lysagxra/BunkrDownloader/blob/8d07aaa4fe4e5b438e9ccc75bf0b71c845df942d/assets/demo.gif)
+> 本分支（`gin`）为 Web 服务形态。同样的后端能力另有 `wails` 分支的桌面应用形态。
 
-## Features
+---
 
-- Downloads multiple files from an album concurrently.
-- Supports [batch downloading](https://github.com/Lysagxra/BunkrDownloader?tab=readme-ov-file#batch-download) via a list of URLs.
-- Supports [selective files downloading](https://github.com/Lysagxra/BunkrDownloader/tree/main?tab=readme-ov-file#selective-download) based on filename criteria.
-- Supports [custom download location](https://github.com/Lysagxra/BunkrDownloader/tree/main?tab=readme-ov-file#file-download-location).
-- Provides [minimal UI](https://github.com/Lysagxra/BunkrDownloader/tree/main?tab=readme-ov-file#disable-ui-for-notebooks) for notebook environments.
-- Provides progress indication during downloads.
-- Automatically creates a directory structure for organized storage.
-- Logs URLs that encounter errors for troubleshooting.
-- **Web Control Panel** (new) — `python3 web_main.py` 启动浏览器控制台，实时查看下载进度、暂停 / 恢复 / 重试任务，所有任务和文件状态以 SQLite 持久化，重启后自动从失败的文件续传。
+## 功能一览
 
-## Dependencies
+| 能力 | 说明 |
+| --- | --- |
+| 批量下载 | 相册（`/a/`）与单文件（`/v/`）链接，支持一次提交多条、文本换行分隔 |
+| 下载引擎 | 全程由 **aria2c** 承载：多线程分片、断点续传、暂停/继续、失败重试（指数退避） |
+| 直链签名 | 复刻原 Python 逻辑：`jsCDN` 解析 → 签名 API 换 token，档案类走 download API 兜底 |
+| 任务队列 | 按套餐并发限制排队；进程重启后自动恢复到可续传状态 |
+| 实时进度 | WebSocket 推送任务/文件进度、事件日志、全局统计，断线指数退避重连 |
+| 账号体系 | 注册 / 登录 / JWT 会话 / 改密，scrypt 密码哈希 |
+| 会员额度 | 免费 **5 个链接 / 50 个文件 / 1 个并发**；会员无限下载、5 个并发 |
+| 会员购买 | 套餐页 + 模拟支付网关 + 订单记录 + 兑换码激活 |
+| 界面 | 深/浅色主题、中英文切换、骨架屏、乐观更新、空态、响应式布局 |
+| 部署 | 多阶段 Dockerfile（内置 aria2c、非 root、tini、healthcheck）、docker compose |
 
-- Python 3.11+
-- `BeautifulSoup` (bs4) - for HTML parsing
-- `requests` - for HTTP requests
-- `rich` - for progress display in the terminal
+---
 
-## Installation
+## 快速开始
 
-Open a terminal in the folder where you want to install the tool, then follow the steps below.
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/Lysagxra/BunkrDownloader.git
-```
-
-2. Navigate to the project directory:
+### 方式一：Docker（推荐）
 
 ```bash
+git clone https://github.com/chaunceyxie1/BunkrDownloader.git
 cd BunkrDownloader
+git checkout gin
+
+cp .env.example .env          # 可选：修改端口 / JWT 密钥 / 免费额度
+docker compose up -d --build
 ```
 
-3. Install the required dependencies:
+打开 <http://localhost:8765>。镜像已内置 `aria2c`，首启动无需联网下载。
+
+### 方式二：本地构建
 
 ```bash
-pip install -r requirements.txt
+git checkout gin
+make setup                    # 安装前端与 Go 依赖
+make build                    # 构建前端 + 编译内嵌 SPA 的二进制
+./bin/windows-amd64/bunkr-web # 或 ./bin/linux-amd64/bunkr-web
 ```
 
-## Single Download
+> 前端开发模式（热更新）：
+> ```bash
+> cd frontend && npm run dev   # 终端 1，Vite 监听 :5173
+> make build && ./bin/*/bunkr-web  # 终端 2，API 在 :8765
+> ```
 
-To download a single media from an URL, you can use `downloader.py`, running the script with a valid album or media URL.
+### aria2c 说明
 
-### Usage
+| 平台 | 获取方式 |
+| --- | --- |
+| Linux | 发行版包管理器（镜像内已装：`apk add aria2`） |
+| Windows / macOS | 首次启动自动下载官方二进制到 `$BUNKR_DATA_DIR/aria2/` |
 
-```bash
-python3 downloader.py <bunkr_url>
-```
+也可用 `BUNKR_ARIA2_BIN` 指向已有的 `aria2c`，或用 `BUNKR_ARIA2_AUTO_FETCH=false` 关闭自动下载。
 
-### Examples
+---
 
-You can either download an entire album or a specific file:
+## 配置
 
-```bash
-python3 downloader.py https://bunkr.si/a/PUK068QE       # Download album
-python3 downloader.py https://bunkr.fi/f/gBrv5f8tAGlGW  # Download single media
-```
+所有配置走环境变量，完整清单见 [`.env.example`](.env.example)。常用项：
 
-## Preserve original filenames
-
-By default the downloader may generate filenames based on the URL. Use the `--clean-name` flag to preserve the original filename found on the item page.
-
-### Usage
-
-```bash
-python3 downloader.py <bunkr_url> --clean-name
-```
-
-### Dry-run example
-
-```bash
-python3 downloader.py --dry-run --clean-name <bunkr_url>
-```
-
-## Selective Download
-
-The script supports selective file downloads from an album, allowing you to exclude files using the [Ignore List](https://github.com/Lysagxra/BunkrDownloader?tab=readme-ov-file#ignore-list) and include specific files with the [Include List](https://github.com/Lysagxra/BunkrDownloader?tab=readme-ov-file#include-list).
-
-## Ignore List
-
-The Ignore List is specified using the `--ignore` argument in the command line.
-This allows you to skip the download of any file from an album if its filename contains at least one of the specified strings in the list.
-Item in the list should be separated by a space.
-
-### Usage
-
-```bash
-python3 downloader.py <bunkr_album_url> --ignore <ignore_list>
-```
-
-### Example
-
-This feature is particularly useful when you want to skip files with certain extensions, such as `.zip` files. For instance:
-
-```bash
-python3 downloader.py https://bunkr.si/a/PUK068QE --ignore .zip
-```
-
-## Include List
-
-The Include List is specified using the `--include` argument in the command line.
-This allows you to download a file from an album only if its filename contains at least one of the specified strings in the list.
-Items in the list should be separated by a space.
-
-### Usage
-
-```bash
-python3 downloader.py <bunkr_album_url> --include <include_list>
-```
-
-### Example
-
-```bash
-python3 downloader.py https://bunkr.si/a/PUK068QE --include FullSizeRender
-```
-
-## Batch Download
-
-To batch download from multiple URLs, you can use the `main.py` script.
-This script reads URLs from a file named `URLs.txt` and downloads each one using the media downloader.
-
-### Usage
-
-1. Create a file named `URLs.txt` in the root of your project, listing each URL on a new line.
-
-- Example of `URLs.txt`:
-
-```
-https://bunkr.si/a/PUK068QE
-https://bunkr.fi/f/gBrv5f8tAGlGW
-https://bunkr.fi/a/kVYLh49Q
-```
-
-- Ensure that each URL is on its own line without any extra spaces.
-- You can add as many URLs as you need, following the same format.
-
-2. Run the batch download script:
-
-```
-python3 main.py
-```
-
-## File Download Location
-
-If the `--custom-path <custom_path>` argument is used, the downloaded files will be saved in `<custom_path>/Downloads`.
-Otherwise, the files will be saved in a `Downloads` folder created within the script's directory
-
-Within that folder, each album gets its own `<album_title> (<album_id>)` subfolder. Use `--no-album-folder` to skip it and save the files directly into the download directory (`--no-download-folder` skips the `Downloads` folder itself; the two can be combined).
-
-### Usage
-
-```bash
-python3 main.py --custom-path <custom_path>
-```
-
-## Disable UI for Notebooks
-
-When the script is executed in a notebook environment (such as Jupyter), excessive output may lead to performance issues or crashes.
-
-### Usage
-
-You can run the script with the `--disable-ui` argument to disable the progress bar and minimize log messages.
-
-To disable the UI, use the following command:
-
-```
-python3 main.py --disable-ui
-```
-
-## Maximum Number of Retries
-
-If a download fails, the downloader will retry up to 5 times by default.
-You can change the maximum number of retry attempts with the `--max-retries` argument.
-
-### Usage
-
-Allowed values: 0 (don't re-download) and larger.
-
-```bash
-python3 downloader.py <bunkr_url> --max-retries 3
-```
-
-## Logging
-
-The application logs any issues encountered during the download process in a file named `session.log`.
-Check this file for any URLs that may have been blocked or had errors.
-
-## Web Control Panel (Web UI)
-
-BunkrDownloader 现提供一个本地 Web 控制台，可以在浏览器中查看下载进度、管理任务、进行断点续传。
-
-### 启动
-
-```bash
-python3 web_main.py                # 默认 http://0.0.0.0:8765
-python3 web_main.py --port 9000    # 自定义端口
-python3 web_main.py --db /path/to/state.db   # 自定义 SQLite 路径
-```
-
-默认状态会保存到 `~/.bunkr_downloader/state.db`。
-
-启动后浏览器打开 `http://localhost:8765` 即可看到面板。
-
-### 功能
-
-- **任务列表**：以卡片形式展示所有任务（URL、状态、进度、文件数）
-- **详情面板**：点击任务后可查看进度条、统计指标、文件列表、事件日志
-- **任务控制**：
-  - `START` — 启动 pending/paused/failed 任务
-  - `PAUSE` — 暂停正在运行的任务
-  - `RESUME` — 恢复已暂停的任务
-  - `CANCEL` — 取消任务（中断当前下载）
-  - `RETRY FAILED` — 重置任务中所有 failed 文件并重启
-  - `DELETE` — 删除任务及所有历史
-- **文件级别重试**：在文件列表中对单个 failed 文件点击 `↻` 即可重试
-- **实时进度**：通过 WebSocket 推送每个文件的下载进度、状态变化
-- **状态持久化**：所有任务/文件/事件以 SQLite 持久化
-
-### 断点续传
-
-Web UI 与 CLI 共享同一套持久化机制。运行场景：
-
-1. 启动 Web 面板并创建任务下载 album
-2. 某些文件下载完成，某些失败
-3. `Ctrl+C` 杀掉服务，或重启进程
-4. 重新启动 `python3 web_main.py`
-5. Web 面板里上次运行中的任务会被自动标为 `paused`
-6. 点击 `START` / `RESUME` 启动任务时，**只会重新下载 pending 和 failed 的文件**，已完成的文件会被跳过
-
-### 编程接口
-
-Web 面板同时暴露 REST API（默认前缀 `/api`）：
-
-| Method | Path | 用途 |
-|---|---|---|
-| GET    | /api/health                          | 健康检查 |
-| GET    | /api/stats                           | 全局统计 |
-| GET    | /api/tasks                           | 列出任务 |
-| POST   | /api/tasks                           | 创建任务（body: `{url, options}`） |
-| GET    | /api/tasks/{id}                      | 任务详情 |
-| DELETE | /api/tasks/{id}                      | 删除任务 |
-| POST   | /api/tasks/{id}/start                | 启动 |
-| POST   | /api/tasks/{id}/pause                | 暂停 |
-| POST   | /api/tasks/{id}/resume               | 恢复 |
-| POST   | /api/tasks/{id}/cancel               | 取消 |
-| POST   | /api/tasks/{id}/retry                | 重试所有失败文件 |
-| GET    | /api/tasks/{id}/files                | 列出文件 |
-| GET    | /api/tasks/{id}/events               | 任务事件 |
-| POST   | /api/files/{id}/retry                | 重试单个文件 |
-| GET    | /api/events                          | 全局事件 |
-| WS     | /ws                                  | WebSocket 实时进度 |
-
-创建任务示例：
-
-```bash
-curl -X POST http://localhost:8765/api/tasks \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "url": "https://bunkr.si/a/XXXXXXXX",
-    "options": {
-      "max_retries": 5,
-      "connections": 4,
-      "clean_name": true
-    }
-  }'
-```
-
-### 单元测试
-
-```bash
-pip install -r requirements.txt -r requirements-dev.txt
-python3 -m pytest tests/ -v
-```
-
-CI 用的完整命令（带 JUnit 报告）：
-
-```bash
-python -m pytest tests/ -v --tb=short --junitxml=junit.xml
-```
-
-## Docker
-
-BunkrDownloader 提供多架构 (linux/amd64, linux/arm64) Docker 镜像，默认启动 Web 控制台。
-
-### 快速启动
-
-```bash
-# 使用预构建镜像（需要 Docker 20.10+）
-docker run -d --name bunkr-web \
-  -p 8765:8765 \
-  -v bunkr-data:/data \
-  -v ./downloads:/downloads \
-  ghcr.io/chaunceyxcx/bunkrdownloader:latest
-```
-
-或使用 docker compose（推荐）：
-
-```bash
-docker compose up -d
-```
-
-启动后访问 http://localhost:8765。
-
-### 数据持久化
-
-镜像将以下路径作为数据卷：
-
-| 路径 | 用途 | 是否必须 |
-|---|---|---|
-| `/data` | SQLite 状态数据库 (state.db) | 是 |
-| `/downloads` | 下载文件默认输出目录 | 否 |
-
-### 环境变量
-
-| 变量 | 默认 | 说明 |
-|---|---|---|
-| `BUNKR_HOST` | `0.0.0.0` | 监听地址 |
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
 | `BUNKR_PORT` | `8765` | 监听端口 |
-| `BUNKR_DB` | `/data/state.db` | SQLite 路径 |
-| `BUNKR_LOG_LEVEL` | `INFO` | 日志等级 |
-| `TZ` | `UTC` | 时区 |
+| `BUNKR_DATA_DIR` | `~/.bunkr_downloader` | 数据库 + aria2 会话 |
+| `BUNKR_DOWNLOAD_DIR` | `$BUNKR_DATA_DIR/downloads` | 下载目录 |
+| `BUNKR_JWT_SECRET` | 自动生成并持久化 | 生产环境请显式设置 |
+| `BUNKR_FREE_LINKS_LIMIT` | `5` | 免费用户链接上限 |
+| `BUNKR_FREE_FILES_LIMIT` | `50` | 免费用户文件上限 |
+| `BUNKR_FREE_CONCURRENCY` | `1` | 免费用户并发任务数 |
+| `BUNKR_MEMBER_CONCURRENCY` | `5` | 会员并发任务数 |
+| `BUNKR_ARIA2_BIN` | 自动探测 | aria2c 路径 |
+| `BUNKR_PAYMENT_AUTO` | `true` | 模拟支付是否直接置为已支付 |
 
-### 自定义配置
+---
 
-```bash
-# 挂在自定义配置文件
-docker run -d --name bunkr-web \
-  -p 9000:8765 \
-  -v bunkr-data:/data \
-  -v $PWD/bunkr.toml:/app/bunkr.toml:ro \
-  -e BUNKR_PORT=8765 \
-  ghcr.io/chaunceyxcx/bunkrdownloader:latest
+## 额度与会员
+
+| 套餐 | 链接 | 文件 | 并发 | 价格 |
+| --- | --- | --- | --- | --- |
+| 免费版 | 5 | 50 | 1 | ¥0 |
+| 会员 · 月付 | ∞ | ∞ | 5 | ¥9.90 |
+| 会员 · 年付 | ∞ | ∞ | 5 | ¥99.00 |
+
+- 提交任务时**一次性校验**链接额度，超限返回 `403 quota_exceeded`（整批拒绝，不做部分创建）。
+- 相册爬取完成后按剩余文件额度截断：超出的文件标记为 `skipped` 并写明原因，不消耗额度。
+- 兑换码（默认种子）：`BUNKR-MEMBER-2024`（30 天）、`BUNKR-MEMBER-2025`（365 天）。
+- 支付为**模拟网关**（`BUNKR_PAYMENT_AUTO=1` 时点击即开通），便于离线演示。
+
+---
+
+## 项目结构
+
+```
+cmd/bunkr-web/           服务入口
+internal/
+  api/                   Gin 路由、处理器、WebSocket 升级
+  aria2/                 aria2 JSON-RPC 客户端 + 进程守护 + 二进制获取
+  auth/                  JWT 签发校验 + scrypt 密码哈希
+  bunkr/                 Bunkr 爬虫（URL 解析 / 相册分页 / 文件名 / 直链签名）
+  bunkrtest/             本地 mock Bunkr 服务（测试用，支持 Range 与限速）
+  config/                环境变量配置
+  downloads/             下载编排器（发现 → 签名 → 入队 → 轮询 → 落库 → 广播）
+  hub/                   WebSocket 广播中心
+  store/                 SQLite 持久化（users/tasks/files/events/orders/redeem_codes）
+  web/                   内嵌 SPA
+frontend/                Vue 3 + TS + Tailwind 前端
+docs/API.md              前后端 API 契约
+scripts/e2e.sh           HTTP 全流程冒烟测试
 ```
 
-### 本地构建
+---
+
+## 测试
 
 ```bash
-docker build -t bunkr-web:dev .
-docker run -d --rm -p 8765:8765 bunkr-web:dev
+make test                 # go vet + 全部单元/集成测试
+make test-unit            # 仅单元测试
+make test-integration     # 集成测试（会拉起真实 aria2c）
+sh scripts/e2e.sh         # 对运行中的服务跑 61 项 HTTP 冒烟
 ```
 
-### 多架构构建
+集成测试通过 `internal/bunkrtest` 的本地 mock 站点跑通**完整链路**：
+抓取相册 → 解析直链 → aria2 传输（含 Range 分片、暂停/续传）→ 校验磁盘字节与 SHA-256。
 
-```bash
-docker buildx build \
-  --platform linux/amd64,linux/arm64 \
-  -t ghcr.io/chaunceyxcx/bunkrdownloader:dev \
-  --push .
-```
+覆盖场景：相册/单文件/档案兜底、暂停续传、取消、免费额度截断、并发排队、
+进程重启后恢复、include/ignore 过滤。
 
-## CI / CD
+---
 
-项目提供以下 GitHub Actions 工作流（位于 `.github/workflows/`）：
+## 常见问题
 
-| 文件 | 触发 | 任务 |
-|---|---|---|
-| `ci.yml` | push / PR 到 main | 多版本 Python 单元测试 |
-| `pylint.yml` | push / PR | Pylint 静态检查 |
-| `docker.yml` | push / PR / tag | hadolint + 多架构镜像构建 + 推送 GHCR + 烟雾测试 |
-| `release.yml` | push tag (v*) | 全量测试 + 生成 changelog + 创建 GitHub Release |
+**页面提示「aria2 不可用」** — 检查 `GET /api/health` 的 `aria2.available`。Linux 下请
+`apk add aria2` / `apt install aria2`，或设置 `BUNKR_ARIA2_BIN`。
 
-### 镜像发布到 GHCR
+**登录后刷新掉线** — 容器重启且数据卷被清空会丢失自动生成的 JWT 密钥。
+请在 `.env` 中固定 `BUNKR_JWT_SECRET`。
 
-推送语义化版本 tag 即可触发发布：
+**下载速度为 0 但任务完成** — 小文件在轮询间隔内完成属于正常；
+进度由 1 秒一次的轮询驱动。
 
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
+---
 
-GH Actions 会自动：
+## 许可证
 
-1. 运行多版本测试套件
-2. hadolint 静态检查
-3. 构建多架构镜像 (linux/amd64, linux/arm64)
-4. 推送镜像到 `ghcr.io/chaunceyxcx/bunkrdownloader`，tag 包含 `v1.0.0` / `v1.0` / `1` / `latest` / `sha-xxxxxxx`
-5. 启动临时容器烟雾测试 `/api/health` `/api/stats` `/`
-6. 生成 CHANGELOG 并创建 GitHub Release
-
-#### 首次发布需配置
-
-仓库设置中确认 `Settings → Actions → General → Workflow permissions` 勾选 *“Read and write permissions”*，否则 GHCR 推送会报 403。
+MIT，见 [LICENSE](LICENSE)。

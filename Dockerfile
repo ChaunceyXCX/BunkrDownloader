@@ -1,98 +1,120 @@
 # syntax=docker/dockerfile:1.7
-# ============================================================================
-#  BunkrDownloader · Web Control Panel
-#  Multi-stage build: builder (deps) + runtime (slim)
-#  Default command starts the Web UI on :8765
-# ============================================================================
+# =============================================================================
+#  BunkrDownloader · Go + Gin
+#
+#  Multi-stage build:
+#    1. web     – builds the Vue 3 SPA with Node
+#    2. builder – compiles the static Go binary with the SPA embedded
+#    3. runtime – distroless-style slim image with aria2c baked in
+#
+#  The image ships aria2c, so no network fetch happens on first boot, and the
+#  process runs as a non-root user with a read-only-friendly filesystem layout.
+# =============================================================================
 
-# ---------- 1. Build dependencies layer --------------------------------------
-FROM python:3.12-slim AS builder
+ARG NODE_IMAGE=node:22-alpine
+ARG GO_IMAGE=golang:1.24-alpine
+ARG ALPINE_IMAGE=alpine:3.20
 
-ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PYTHONDONTWRITEBYTECODE=1
+# ---------- 1. Frontend --------------------------------------------------------
+FROM ${NODE_IMAGE} AS web
 
 WORKDIR /build
 
-# System deps needed at build time for wheels (aiohttp brings most)
-# hadolint ignore=DL3008 — versions are pinned by the python:3.12-slim base image
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
-        gcc \
-        libffi-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Dependencies are installed from the lockfile first so this layer is cached
+# until the dependency set actually changes.
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
 
-# Install Python deps into a prefix we can copy to the runtime stage
-COPY requirements.txt ./
-RUN pip install --prefix=/install \
-        --no-cache-dir \
-        -r requirements.txt
+COPY frontend/ ./
+RUN npm run build \
+    && test -f dist/index.html \
+    && grep -q './assets/' dist/index.html \
+    && echo "✓ SPA built"
 
-# ---------- 2. Runtime layer -------------------------------------------------
-FROM python:3.12-slim AS runtime
 
-LABEL org.opencontainers.image.title="BunkrDownloader Web" \
-      org.opencontainers.image.description="Web control panel for BunkrDownloader with SQLite resume" \
-      org.opencontainers.image.source="https://github.com/Lysagxra/BunkrDownloader" \
-      org.opencontainers.image.licenses="MIT"
+# ---------- 2. Go build --------------------------------------------------------
+FROM ${GO_IMAGE} AS builder
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONFAULTHANDLER=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
+ARG VERSION=1.0.0
+ENV CGO_ENABLED=0 GOOS=linux GOTOOLCHAIN=local
 
-# tini-style signal handling + curl for healthcheck
-# hadolint ignore=DL3008 — versions are pinned by the python:3.12-slim base image
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        tini \
-        curl \
+WORKDIR /src
+
+# Module cache first.
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY cmd/      ./cmd/
+COPY internal/ ./internal/
+
+# The SPA is embedded from internal/web/dist, which the web stage produced.
+COPY --from=web /build/dist/ ./internal/web/dist/
+RUN test -f internal/web/dist/index.html || (echo "SPA assets missing" && exit 1)
+
+# -trimpath keeps the build reproducible; -s -w strip the symbol table.
+RUN go vet ./... \
+    && CGO_ENABLED=0 go build \
+        -trimpath \
+        -ldflags "-s -w -X main.version=${VERSION}" \
+        -o /out/bunkr-web ./cmd/bunkr-web
+
+# Smoke-test the binary in the build environment.
+RUN /out/bunkr-web -version
+
+
+# ---------- 3. Runtime ---------------------------------------------------------
+FROM ${ALPINE_IMAGE} AS runtime
+
+LABEL org.opencontainers.image.title="BunkrDownloader" \
+      org.opencontainers.image.description="Bunkr album downloader with accounts, memberships and an aria2 engine" \
+      org.opencontainers.image.source="https://github.com/chaunceyxie1/BunkrDownloader" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="1.0.0"
+
+ENV TZ=UTC \
+    BUNKR_HOST=0.0.0.0 \
+    BUNKR_PORT=8765 \
+    BUNKR_DATA_DIR=/data \
+    BUNKR_DOWNLOAD_DIR=/downloads \
+    BUNKR_DB=/data/bunkr.db \
+    BUNKR_ARIA2_ENABLED=true \
+    BUNKR_ARIA2_HOST=127.0.0.1 \
+    BUNKR_ARIA2_PORT=6800 \
+    BUNKR_ARIA2_SECRET=bunkr \
+    BUNKR_LOG_LEVEL=INFO
+
+# hadolint ignore=DL3018 — aria2c pins come from the official project
+# (package versions are not available in the Alpine repositories).
+RUN apk add --no-cache \
         ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --shell /bin/bash --uid 1000 bunkr
+        curl \
+        tzdata \
+        tini \
+        aria2 \
+ && aria2c --version | head -1
+
+# The service runs as an unprivileged user; /data holds the database and the
+# aria2 session, /downloads receives the files.
+RUN addgroup -S -g 1000 bunkr \
+ && adduser -S -u 1000 -G bunkr -h /home/bunkr bunkr \
+ && mkdir -p /data /downloads \
+ && chown -R bunkr:bunkr /data /downloads
 
 WORKDIR /app
-
-# Copy only the prebuilt Python site-packages from the builder
-COPY --from=builder /install /usr/local
-
-# Copy the application code
-COPY --chown=bunkr:bunkr src/       ./src/
-COPY --chown=bunkr:bunkr web/       ./web/
-COPY --chown=bunkr:bunkr web_main.py ./
-COPY --chown=bunkr:bunkr README.md   ./
-COPY --chown=bunkr:bunkr requirements.txt ./
-
-# Persistent / working directories
-RUN mkdir -p /data /downloads \
-    && chown -R bunkr:bunkr /data /downloads
-
-# 复制启动脚本并赋权限
-COPY --chown=bunkr:bunkr entrypoint.sh ./entrypoint.sh
-RUN chmod +x entrypoint.sh
+COPY --from=builder /out/bunkr-web /usr/local/bin/bunkr-web
+COPY --chown=bunkr:bunkr docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 USER bunkr
 
-# Defaults — override at runtime with `docker run -e ...`
-ENV BUNKR_HOST=0.0.0.0 \
-    BUNKR_PORT=8765 \
-    BUNKR_DB=/data/state.db \
-    BUNKR_DOWNLOADS_DIR=/downloads \
-    BUNKR_LOG_LEVEL=INFO
-
 EXPOSE 8765
+VOLUME ["/data", "/downloads"]
 
-# Healthcheck hits the JSON endpoint
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -fsS "http://127.0.0.1:${BUNKR_PORT}/api/health" || exit 1
+# The health endpoint reports aria2 readiness, so a broken engine surfaces here.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -fsS "http://127.0.0.1:${BUNKR_PORT}/api/health" \
+        | grep -q '"status":"ok"' || exit 1
 
-# tini reaps zombies and forwards signals (SIGTERM → clean shutdown)
-# entrypoint.sh 确保 volume 挂载后目录权限正确
-ENTRYPOINT ["/usr/bin/tini", "--", "/app/entrypoint.sh"]
-CMD ["python3", "web_main.py", \
-     "--host", "0.0.0.0", \
-     "--port", "8765", \
-     "--db", "/data/state.db", \
-     "--log-level", "INFO"]
+# tini reaps zombies and forwards SIGTERM for a clean shutdown.
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/entrypoint.sh"]
+CMD ["bunkr-web"]

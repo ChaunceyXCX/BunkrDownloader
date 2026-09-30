@@ -1,59 +1,62 @@
-# ===== Git =====
-.git/
+# ============================================================================
+#  BunkrDownloader · docker build context
+#  Keep the context small: the image is built from sources, never from a
+#  pre-existing node_modules or a previously built SPA.
+# ============================================================================
+
+# --- version control / IDE ---------------------------------------------------
+.git
+.gitignore
+.github
 .gitattributes
-.github/
-
-# ===== Python =====
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-.venv/
-venv/
-env/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-htmlcov/
-.coverage
-.coverage.*
-.tox/
-*.egg-info/
-build/
-dist/
-
-# ===== IDE / editor =====
-.idea/
-.vscode/
+.kilo
+.vscode
+.idea
 *.swp
 *.swo
-.DS_Store
-.pi-glla/
 
-# ===== Test artifacts =====
-tests/
-pytest.ini
-htmlcov/
-requirements-dev.txt
+# --- Go build artifacts ------------------------------------------------------
+bin/
+*.exe
+*.test
+*.out
+coverage.*
+internal/web/dist/*
+!internal/web/dist/.gitkeep
 
-# ===== Logs / runtime =====
+# --- frontend ----------------------------------------------------------------
+frontend/node_modules
+frontend/dist
+frontend/.vite
+frontend/npm-debug.log*
+frontend/.env
+frontend/.env.local
+
+# --- python leftovers from the pre-go layout --------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# --- runtime data ------------------------------------------------------------
+data/
+downloads/
+*.db
+*.db-shm
+*.db-wal
 *.log
-session.log
-*.bunkr_state.json
-.bunkr_downloader/
-state.db
-state.db-wal
-state.db-shm
+*.session
+aria2-session.txt
 
-# ===== Docker =====
-Dockerfile
-.dockerignore
-docker-compose*.yml
-docker-compose*.yaml
-
-# ===== Docs (kept for size, optionally) =====
-# README.md
-# CONTRIBUTING.md
-# LICENSE
-# assets/
+# --- docs & misc -------------------------------------------------------------
+*.md
+!README.md
+!docs/*.md
+.kilo/
+scripts/
+assets/
+Makefile
+.env
+.env.*
+!.env.example
