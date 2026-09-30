@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import type { PlanId, PlanItem } from '@/api/types'
 import { useI18nStore } from '@/stores/i18n'
-import { useAuthStore } from '@/stores/auth'
 import { useFormat } from '@/composables/useFormat'
 import Icon from '@/components/ui/Icon.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
@@ -17,7 +16,6 @@ const props = defineProps<{
 const emit = defineEmits<{ select: [plan: PlanItem] }>()
 
 const i18n = useI18nStore()
-const auth = useAuthStore()
 const { formatPrice } = useFormat(() => i18n.locale)
 
 const isFree = computed(() => props.plan.id === 'free')
@@ -36,8 +34,12 @@ const price = computed(() => formatPrice(props.plan.price_cents, props.plan.curr
 // as-is. Appending derived lines here duplicated the free plan's limits.
 const features = computed(() => props.plan.features ?? [])
 
-const activeId = computed(() => (auth.isMember ? 'member_monthly' : 'free'))
-const isActiveHere = computed(() => props.plan.id === activeId.value || props.current)
+// The "current" highlight (and the disabled CTA badge) is driven solely by
+// the parent's `current` prop, which knows the user's actual plan from order
+// history. It must NOT default to a hardcoded tier when isMember — otherwise,
+// after buying one tier every paid plan would look "current" and the other
+// buy buttons would disappear.
+const isActiveHere = computed(() => props.current)
 </script>
 
 <template>

@@ -30,7 +30,19 @@ const redeeming = ref(false)
 const confirmPay = ref<null | { order: Order; planName: string }>(null)
 const paying = ref(false)
 
-const currentPlanId = computed<PlanId>(() => (auth.isMember ? 'member_yearly' : 'free'))
+// The plan the user currently holds. The backend records membership as a
+// generic `plan: "member"`, so the specific tier (monthly vs yearly) is derived
+// from the most recent paid order. This keeps only the owned plan marked
+// "current" and leaves the other paid plans purchasable (renew / switch).
+const currentPlanId = computed<PlanId>(() => {
+  const paid = orders.value
+    .filter((o) => o.status === 'paid')
+    .sort((a, b) => b.id - a.id)[0]
+  if (paid && (paid.plan === 'member_monthly' || paid.plan === 'member_yearly')) {
+    return paid.plan
+  }
+  return auth.isMember ? 'member_monthly' : 'free'
+})
 
 onMounted(loadAll)
 
