@@ -1,0 +1,9 @@
+version: '3'
+
+vars:
+  APP_NAME: BunkrDownloader
+  BIN_DIR: bin
+  FRONTEND_DIR: frontend
+  OUTPUT_FILENAME: BunkrDownloader
+  VERSION:
+    sh: echo "${VERSION:-1.0.0}"

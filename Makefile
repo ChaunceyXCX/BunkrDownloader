@@ -1,63 +1,77 @@
 # ============================================================================
-#  BunkrDownloader · Go / Gin build
+#  BunkrDownloader (Wails v3 desktop) · build
 #
 #  Quick start:
-#    make setup     install frontend + Go deps
-#    make dev       build the SPA, then run the server on :8765
-#    make test      go vet + unit + integration tests
-#    make docker    build the container image
+#    make setup    install the wails3 CLI + frontend deps
+#    make dev      run the desktop app in development mode (HMR)
+#    make build    produce a production binary in bin/
+#    make test     go vet + unit + integration tests
+#
+#  NOTE: Wails v3 reads every build option from the Taskfiles
+#  (Taskfile.yml + build/<os>/Taskfile.yml) — `wails3 build` accepts no
+#  -o/-ldflags/-clean flags. Version, tags and output name are therefore
+#  configured in build/Taskfile.yml, and VERSION is passed through the
+#  environment.
 # ============================================================================
 
-SHELL       := /bin/sh
-MODULE      := github.com/chaunceyxie1/BunkrDownloader
-BINARY      := bunkr-web
-CMD         := ./cmd/bunkr-web
-VERSION     ?= 1.0.0
-LDFLAGS     := -s -w -X main.version=$(VERSION)
-GOFILES     := $(shell find . -type f -name '*.go' -not -path './frontend/*')
-EMBED_DIR   := internal/web/dist
-FRONTEND    := frontend
-DIST        := $(FRONTEND)/dist
-GOOS        ?= $(shell go env GOOS)
-GOARCH      ?= $(shell go env GOARCH)
-DIST_DIR    := bin/$(GOOS)-$(GOARCH)
-PKG         := $(DIST_DIR)/$(BINARY)
+SHELL   := /bin/sh
+BINARY  := BunkrDownloader
+VERSION ?= 1.0.0
+export VERSION
+WAILS   := wails3
+GOOS    ?= $(shell go env GOOS)
+GOARCH  ?= $(shell go env GOARCH)
+DIST    := bin/$(GOOS)-$(GOARCH)
+PKG     := $(DIST)/$(BINARY)
+FRONTEND:= frontend
 
 .DEFAULT_GOAL := help
-.PHONY: help setup web build run dev test test-unit test-integration vet fmt \
-        lint clean docker docker-run compose-up compose-down tidy version
+.PHONY: help setup bindings web build dev run test test-unit test-integration \
+        vet fmt lint clean package install-cli tidy aria2
 
-help: ## 显示所有可用命令
-	@echo "BunkrDownloader — available targets:"
+help: ## 显示可用命令
+	@echo "BunkrDownloader Desktop — available targets:"
 	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+
+install-cli: ## 安装 wails3 CLI
+	go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
 setup: ## 安装前端与 Go 依赖
 	cd $(FRONTEND) && npm install
 	go mod download
 	@echo "✔ dependencies ready"
 
-web: ## 构建 Vue 前端并复制到 Go embed 目录
-	cd $(FRONTEND) && npm install --silent && npm run build
-	@mkdir -p $(EMBED_DIR)
-	@rm -rf $(EMBED_DIR)/*
-	@cp -r $(DIST)/. $(EMBED_DIR)/
-	@echo "✔ frontend embedded into $(EMBED_DIR)"
+bindings: ## 重新生成 Wails 前端绑定
+	$(WAILS) generate bindings
+	@echo "✔ bindings written to $(FRONTEND)/bindings"
 
-build: web ## 构建包含前端的二进制
-	@mkdir -p $(DIST_DIR)
-	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(PKG) $(CMD)
-	@echo "✔ built $(PKG)"
+web: ## 仅构建前端
+	cd $(FRONTEND) && npm run build
+	@echo "✔ SPA built"
 
-run: ## 构建并运行（默认 :8765）
-	$(MAKE) build
-	./$(PKG)
+# Build options live in the Taskfiles, so this is a plain `wails3 build`
+# (which runs the OS-specific `build` task and embeds frontend/dist).
+build: ## 构建桌面应用（含前端）
+	$(WAILS) build -nocolour
+	@mkdir -p $(DIST)
+	@cp bin/$(BINARY).* $(PKG).* 2>/dev/null || true
+	@echo "✔ built $(DIST)"
 
-dev: ## 前端热更新 + 后端（两个终端）
-	@echo "终端 1: cd $(FRONTEND) && npm run dev"
-	@echo "终端 2: make build && ./$(PKG)"
-	@$(MAKE) build
-	./$(PKG)
+package: ## 打包安装程序（NSIS / dmg / deb）
+	$(WAILS) package -nocolour
+	@echo "✔ installer written to build/bin"
+
+dev: ## 开发模式（前端热更新）
+	$(WAILS) dev -config ./build/config.yml -loglevel Debug
+
+run: build ## 构建并运行
+	$(WAILS) task run
+
+aria2: ## 报告 aria2c 位置（桌面端会自动探测）
+	@command -v aria2c >/dev/null 2>&1 \
+		&& aria2c --version | head -1 \
+		|| echo "aria2c not on PATH — the app will try to download it, or set BUNKR_ARIA2_BIN"
 
 # ------------------------------------------------------------------- quality
 
@@ -65,17 +79,18 @@ vet: ## go vet
 	go vet ./...
 
 fmt: ## 格式化
-	gofmt -l -w $(GOFILES)
+	gofmt -l -w $(shell find . -type f -name '*.go' -not -path './frontend/*')
 
 lint: fmt vet ## 格式化并静态检查
 	@echo "✔ lint clean"
 
-test-unit: ## 仅单元测试（不启动 aria2）
+test-unit: ## 单元测试
 	go test ./internal/store/... ./internal/auth/... ./internal/bunkr/... \
-	        ./internal/aria2/... ./internal/api/... ./internal/config/...
+	        ./internal/aria2/... ./internal/hub/... ./internal/bunkrtest/... \
+	        ./internal/config/... ./internal/services/... -count=1
 
-test-integration: ## 集成测试（需要 aria2c，会自动下载）
-	go test ./internal/downloads/... -v -timeout 600s
+test-integration: ## 集成测试（会拉起真实 aria2c）
+	go test ./internal/downloads/... -v -timeout 600s -count=1
 
 test: vet test-unit test-integration ## 全部测试
 	@echo "✔ all tests passed"
@@ -83,27 +98,6 @@ test: vet test-unit test-integration ## 全部测试
 tidy: ## 整理 go.mod
 	go mod tidy
 
-# --------------------------------------------------------------------- docker
-
-docker: ## 构建容器镜像
-	docker build -t ghcr.io/chaunceyxie1/bunkrdownloader:$(VERSION) -t bunkrdownloader:latest .
-
-docker-run: ## 运行容器
-	docker run --rm -it -p 8765:8765 \
-		-v bunkr-data:/data -v $$(pwd)/downloads:/downloads \
-		bunkrdownloader:latest
-
-compose-up: ## docker compose 启动
-	docker compose up -d --build
-
-compose-down: ## docker compose 停止
-	docker compose down
-
-# ---------------------------------------------------------------------- misc
-
 clean: ## 清理构建产物
-	rm -rf bin $(EMBED_DIR)/* $(DIST)
+	rm -rf bin frontend/dist
 	@echo "✔ cleaned"
-
-version: ## 打印版本
-	@echo $(VERSION)

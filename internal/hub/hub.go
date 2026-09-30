@@ -85,12 +85,18 @@ func (c *Client) Wants(taskID int64) bool {
 // Dropped returns the number of messages discarded for this client.
 func (c *Client) Dropped() int64 { return c.dropped.Load() }
 
+// Sink receives every published frame before it is filtered to WebSocket
+// clients. It lets non-HTTP frontends (the Wails desktop app) observe the same
+// event stream without a second publisher.
+type Sink func(userID, taskID int64, frame Frame)
+
 // Hub fans frames out to the clients of a single user.
 type Hub struct {
 	log *slog.Logger
 
 	mu      sync.RWMutex
 	clients map[uint64]*Client
+	sinks   []Sink
 	nextID  atomic.Uint64
 
 	queue  chan envelope
@@ -168,6 +174,27 @@ func (h *Hub) Clients(userID int64) int {
 	return n
 }
 
+// AddSink registers an observer that sees every published frame.
+// The returned function removes the sink.
+func (h *Hub) AddSink(s Sink) func() {
+	if s == nil {
+		return func() {}
+	}
+	h.mu.Lock()
+	h.sinks = append(h.sinks, s)
+	h.mu.Unlock()
+	return func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		for i, existing := range h.sinks {
+			if &existing == &h.sinks[i] {
+				h.sinks = append(h.sinks[:i], h.sinks[i+1:]...)
+				return
+			}
+		}
+	}
+}
+
 // Publish enqueues a frame for every client of userID interested in taskID.
 // It never blocks: when the queue is saturated the message is dropped and
 // clients recover on the next REST poll.
@@ -211,7 +238,28 @@ func (h *Hub) run() {
 			return
 		case env := <-h.queue:
 			h.deliver(env)
+			h.notifySinks(env)
 		}
+	}
+}
+
+// notifySinks forwards a frame to the registered non-HTTP observers.
+func (h *Hub) notifySinks(env envelope) {
+	h.mu.RLock()
+	sinks := make([]Sink, len(h.sinks))
+	copy(sinks, h.sinks)
+	h.mu.RUnlock()
+
+	for _, sink := range sinks {
+		func() {
+			// A misbehaving sink must never take the hub down.
+			defer func() {
+				if r := recover(); r != nil {
+					h.log.Error("ws sink panicked", "panic", r)
+				}
+			}()
+			sink(env.userID, env.taskID, env.frame)
+		}()
 	}
 }
 

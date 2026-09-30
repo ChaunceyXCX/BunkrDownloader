@@ -6,6 +6,7 @@ package config
 
 import (
 	"bufio"
+	"crypto/rand"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +14,9 @@ import (
 	"strings"
 	"time"
 )
+
+// big returns v as an int so the modulo below never divides by a typed zero.
+func big(v int) int { return v }
 
 // Config holds every tunable of the server.
 type Config struct {
@@ -135,35 +139,49 @@ func defaultDataDir() string {
 	return ".bunkr_downloader"
 }
 
+// loadOrCreateSecret returns the JWT secret, generating and persisting one on
+// first use so that sessions survive restarts.
 func loadOrCreateSecret(path string) string {
 	if b, err := os.ReadFile(path); err == nil && len(b) >= 32 {
-		return strings.TrimSpace(string(b))
+		if secret := strings.TrimSpace(string(b)); len(secret) >= 32 {
+			return secret
+		}
 	}
-	secret := randomToken(32)
+	secret := RandomToken(32)
 	_ = os.MkdirAll(filepath.Dir(path), 0o755)
+	// 0600: the secret signs every session token.
 	_ = os.WriteFile(path, []byte(secret), 0o600)
 	return secret
 }
 
-func randomToken(n int) string {
-	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	buf := make([]byte, n)
-	f, err := os.Open("/dev/urandom")
-	if err == nil {
-		defer f.Close()
-		raw := make([]byte, n)
-		if _, err := f.Read(raw); err == nil {
-			for i, b := range raw {
-				buf[i] = alphabet[int(b)%len(alphabet)]
-			}
-			return string(buf)
-		}
+// tokenAlphabet is the character set used for generated secrets.
+const tokenAlphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+// RandomToken returns a cryptographically random string of n characters.
+//
+// crypto/rand is portable (unlike /dev/urandom, which does not exist on
+// Windows), so the primary path is used everywhere. The deterministic
+// fallback exists only so a broken entropy source cannot crash startup.
+func RandomToken(n int) string {
+	if n <= 0 {
+		return ""
 	}
-	// Fallback: use time + pid entropy (never reached on supported platforms).
-	seed := time.Now().UnixNano()
+	alphabetLen := big(len(tokenAlphabet))
+	buf := make([]byte, n)
+
+	raw := make([]byte, n)
+	if _, err := rand.Read(raw); err == nil {
+		for i, b := range raw {
+			buf[i] = tokenAlphabet[int(b)%alphabetLen]
+		}
+		return string(buf)
+	}
+
+	// Fallback: mask the shifted value so the index is always non-negative.
+	seed := uint64(time.Now().UnixNano())
 	for i := range buf {
 		seed = seed*6364136223846793005 + 1442695040888963407
-		buf[i] = alphabet[int(seed>>33)%len(alphabet)]
+		buf[i] = tokenAlphabet[int((seed>>33)&0x7fffffff)%alphabetLen]
 	}
 	return string(buf)
 }

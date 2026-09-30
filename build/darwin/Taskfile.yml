@@ -1,0 +1,32 @@
+version: '3'
+
+includes:
+  common: ../Taskfile.yml
+  shared: ../common.yml
+
+tasks:
+  build:
+    summary: Builds the macOS desktop application
+    deps:
+      - task: shared:go:mod:tidy
+      - task: shared:build:frontend
+    cmds:
+      - go build {{.BUILD_FLAGS}} -o {{.BIN_DIR}}/{{.APP_NAME}}
+    vars:
+      BUILD_FLAGS: '-tags production -trimpath -buildvcs=false -ldflags="-w -s -X main.version={{.VERSION}}"'
+    env:
+      GOOS: darwin
+      CGO_ENABLED: 0
+      GOARCH: '{{.ARCH | default ARCH}}'
+
+  run:
+    summary: Runs the compiled macOS binary
+    cmds:
+      - '{{.BIN_DIR}}/{{.APP_NAME}}'
+
+  package:
+    summary: Builds a macOS .app / dmg bundle
+    deps:
+      - task: build
+    cmds:
+      - wails3 package -clean -platform darwin/{{.ARCH | default ARCH}}

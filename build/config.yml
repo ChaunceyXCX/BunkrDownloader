@@ -1,0 +1,18 @@
+# Wails v3 build configuration for BunkrDownloader.
+#
+# The frontend dev server is started by `wails3 dev`; the Go side reaches it
+# through FRONTEND_DEVSERVER_URL, which wails3 injects automatically.
+name: BunkrDownloader
+outputfilename: BunkrDownloader
+
+# The embedded assets live in frontend/dist and are compiled into the binary by
+# //go:embed in main.go, so no extra asset copy step is needed.
+
+frontend:
+  dev:
+    serverUrl: auto
+  build:
+    command: npm run build
+
+# aria2c is shipped next to the executable; the runtime resolves it from the
+# application directory first, then from PATH.

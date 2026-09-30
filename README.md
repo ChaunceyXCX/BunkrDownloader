@@ -1,153 +1,173 @@
-# BunkrDownloader
+# BunkrDownloader · 桌面版
 
-一个用 **Go + Gin** 重写的 Bunkr 相册批量下载器：**aria2** 负责实际传输，
-**Vue 3 + TypeScript + Tailwind** 提供控制台界面，内置**账号体系**与**会员额度**。
-
-> 本分支（`gin`）为 Web 服务形态。同样的后端能力另有 `wails` 分支的桌面应用形态。
+把 [Web 版](../blob/gin/README.md) 的能力搬进 **Wails v3** 桌面应用：
+同一个 Go 领域层（`store` / `auth` / `bunkr` / `aria2` / `downloads`），
+前端从 REST + WebSocket 换成 **Wails 服务绑定 + Wails 事件**，
+界面与功能保持一致。
 
 ---
 
-## 功能一览
+## 与 Web 版的关系
 
-| 能力 | 说明 |
-| --- | --- |
-| 批量下载 | 相册（`/a/`）与单文件（`/v/`）链接，支持一次提交多条、文本换行分隔 |
-| 下载引擎 | 全程由 **aria2c** 承载：多线程分片、断点续传、暂停/继续、失败重试（指数退避） |
-| 直链签名 | 复刻原 Python 逻辑：`jsCDN` 解析 → 签名 API 换 token，档案类走 download API 兜底 |
-| 任务队列 | 按套餐并发限制排队；进程重启后自动恢复到可续传状态 |
-| 实时进度 | WebSocket 推送任务/文件进度、事件日志、全局统计，断线指数退避重连 |
-| 账号体系 | 注册 / 登录 / JWT 会话 / 改密，scrypt 密码哈希 |
-| 会员额度 | 免费 **5 个链接 / 50 个文件 / 1 个并发**；会员无限下载、5 个并发 |
-| 会员购买 | 套餐页 + 模拟支付网关 + 订单记录 + 兑换码激活 |
-| 界面 | 深/浅色主题、中英文切换、骨架屏、乐观更新、空态、响应式布局 |
-| 部署 | 多阶段 Dockerfile（内置 aria2c、非 root、tini、healthcheck）、docker compose |
+| | `gin` 分支 | `wails` 分支（本分支） |
+| --- | --- | --- |
+| 形态 | Web 服务 + 内嵌 SPA | 桌面应用 |
+| 传输 | REST `/api/*` + WebSocket | Wails 服务绑定 + Wails 事件 |
+| 入口 | `cmd/bunkr-web` | `main.go` |
+| 界面 | Vue 3 + TS + Tailwind | **同一套**（仅替换传输层） |
+| 下载引擎 | aria2c | aria2c（同一个 `internal/aria2`） |
+| 账号/会员 | 有 | 有（同一套 `store` + 配额逻辑） |
+| 额外观赠 | — | 一键打开下载目录、定位文件、重启 aria2 |
+
+被复用的包在两个分支上**逐字相同**，因此行为天然一致：
+`internal/store`、`internal/auth`、`internal/bunkr`、`internal/aria2`、
+`internal/downloads`、`internal/bunkrtest`。
+
+唯一差异：`internal/hub` 增加了 `AddSink`，让下载事件可以同时喂给
+WebSocket 客户端（Web 版）和 Wails 事件（桌面版）。
 
 ---
 
 ## 快速开始
 
-### 方式一：Docker（推荐）
+### 前置条件
 
-```bash
-git clone https://github.com/chaunceyxie1/BunkrDownloader.git
-cd BunkrDownloader
-git checkout gin
-
-cp .env.example .env          # 可选：修改端口 / JWT 密钥 / 免费额度
-docker compose up -d --build
-```
-
-打开 <http://localhost:8765>。镜像已内置 `aria2c`，首启动无需联网下载。
-
-### 方式二：本地构建
-
-```bash
-git checkout gin
-make setup                    # 安装前端与 Go 依赖
-make build                    # 构建前端 + 编译内嵌 SPA 的二进制
-./bin/windows-amd64/bunkr-web # 或 ./bin/linux-amd64/bunkr-web
-```
-
-> 前端开发模式（热更新）：
-> ```bash
-> cd frontend && npm run dev   # 终端 1，Vite 监听 :5173
-> make build && ./bin/*/bunkr-web  # 终端 2，API 在 :8765
-> ```
-
-### aria2c 说明
-
-| 平台 | 获取方式 |
-| --- | --- |
-| Linux | 发行版包管理器（镜像内已装：`apk add aria2`） |
-| Windows / macOS | 首次启动自动下载官方二进制到 `$BUNKR_DATA_DIR/aria2/` |
-
-也可用 `BUNKR_ARIA2_BIN` 指向已有的 `aria2c`，或用 `BUNKR_ARIA2_AUTO_FETCH=false` 关闭自动下载。
-
----
-
-## 配置
-
-所有配置走环境变量，完整清单见 [`.env.example`](.env.example)。常用项：
-
-| 变量 | 默认值 | 说明 |
+| 依赖 | 版本 | 备注 |
 | --- | --- | --- |
-| `BUNKR_PORT` | `8765` | 监听端口 |
-| `BUNKR_DATA_DIR` | `~/.bunkr_downloader` | 数据库 + aria2 会话 |
-| `BUNKR_DOWNLOAD_DIR` | `$BUNKR_DATA_DIR/downloads` | 下载目录 |
-| `BUNKR_JWT_SECRET` | 自动生成并持久化 | 生产环境请显式设置 |
-| `BUNKR_FREE_LINKS_LIMIT` | `5` | 免费用户链接上限 |
-| `BUNKR_FREE_FILES_LIMIT` | `50` | 免费用户文件上限 |
-| `BUNKR_FREE_CONCURRENCY` | `1` | 免费用户并发任务数 |
-| `BUNKR_MEMBER_CONCURRENCY` | `5` | 会员并发任务数 |
-| `BUNKR_ARIA2_BIN` | 自动探测 | aria2c 路径 |
-| `BUNKR_PAYMENT_AUTO` | `true` | 模拟支付是否直接置为已支付 |
+| Go | 1.24+ | |
+| Node.js | 18+ | |
+| wails3 CLI | `v3.0.0-beta.26` | `make install-cli` |
+| aria2c | 1.37+ | 见下方说明 |
 
----
-
-## 额度与会员
-
-| 套餐 | 链接 | 文件 | 并发 | 价格 |
-| --- | --- | --- | --- | --- |
-| 免费版 | 5 | 50 | 1 | ¥0 |
-| 会员 · 月付 | ∞ | ∞ | 5 | ¥9.90 |
-| 会员 · 年付 | ∞ | ∞ | 5 | ¥99.00 |
-
-- 提交任务时**一次性校验**链接额度，超限返回 `403 quota_exceeded`（整批拒绝，不做部分创建）。
-- 相册爬取完成后按剩余文件额度截断：超出的文件标记为 `skipped` 并写明原因，不消耗额度。
-- 兑换码（默认种子）：`BUNKR-MEMBER-2024`（30 天）、`BUNKR-MEMBER-2025`（365 天）。
-- 支付为**模拟网关**（`BUNKR_PAYMENT_AUTO=1` 时点击即开通），便于离线演示。
-
----
-
-## 项目结构
-
-```
-cmd/bunkr-web/           服务入口
-internal/
-  api/                   Gin 路由、处理器、WebSocket 升级
-  aria2/                 aria2 JSON-RPC 客户端 + 进程守护 + 二进制获取
-  auth/                  JWT 签发校验 + scrypt 密码哈希
-  bunkr/                 Bunkr 爬虫（URL 解析 / 相册分页 / 文件名 / 直链签名）
-  bunkrtest/             本地 mock Bunkr 服务（测试用，支持 Range 与限速）
-  config/                环境变量配置
-  downloads/             下载编排器（发现 → 签名 → 入队 → 轮询 → 落库 → 广播）
-  hub/                   WebSocket 广播中心
-  store/                 SQLite 持久化（users/tasks/files/events/orders/redeem_codes）
-  web/                   内嵌 SPA
-frontend/                Vue 3 + TS + Tailwind 前端
-docs/API.md              前后端 API 契约
-scripts/e2e.sh           HTTP 全流程冒烟测试
-```
-
----
-
-## 测试
+Linux 上构建还需要 `libgtk-3-dev libwebkit2gtk-4.0-dev`（Wails 的 WebView 依赖）。
 
 ```bash
-make test                 # go vet + 全部单元/集成测试
-make test-unit            # 仅单元测试
-make test-integration     # 集成测试（会拉起真实 aria2c）
-sh scripts/e2e.sh         # 对运行中的服务跑 61 项 HTTP 冒烟
+# 1. 安装 wails3 CLI
+make install-cli
+
+# 2. 安装依赖
+make setup
+
+# 3. 开发模式（前端热更新）
+make dev
+
+# 4. 生产构建 → bin/BunkrDownloader
+make build
 ```
 
-集成测试通过 `internal/bunkrtest` 的本地 mock 站点跑通**完整链路**：
-抓取相册 → 解析直链 → aria2 传输（含 Range 分片、暂停/续传）→ 校验磁盘字节与 SHA-256。
+### aria2c
 
-覆盖场景：相册/单文件/档案兜底、暂停续传、取消、免费额度截断、并发排队、
-进程重启后恢复、include/ignore 过滤。
+| 平台 | 方式 |
+| --- | --- |
+| Windows / macOS | 首次启动自动下载官方二进制到 `%APPDATA%/BunkrDownloader/aria2/` |
+| Linux | 用包管理器安装：`apt install aria2` / `apk add aria2` / `dnf install aria2` |
+| 任意平台 | 把 `aria2c` 放在**可执行文件同级目录**或加入 `PATH` |
+| 任意平台 | `BUNKR_ARIA2_BIN=/path/to/aria2c` |
+
+启动顺序：可执行文件同级目录 → `PATH` → 自动下载。
+应用启动时即使 aria2 不可用也能正常打开（账号、会员、历史任务仍可用），
+`GET /api/health` 等价的 `SystemService.Health()` 会返回 `degraded`。
 
 ---
 
-## 常见问题
+## 数据存放位置
 
-**页面提示「aria2 不可用」** — 检查 `GET /api/health` 的 `aria2.available`。Linux 下请
-`apk add aria2` / `apt install aria2`，或设置 `BUNKR_ARIA2_BIN`。
+| 内容 | Windows | macOS | Linux |
+| --- | --- | --- | --- |
+| 数据库 + 日志 + aria2 会话 | `%APPDATA%\BunkrDownloader` | `~/Library/Application Support/BunkrDownloader` | `$XDG_CONFIG_HOME/bunkrdownloader` |
+| 下载文件 | `%USERPROFILE%\Downloads\BunkrDownloader` | `~/Downloads/BunkrDownloader` | `~/Downloads/BunkrDownloader` |
 
-**登录后刷新掉线** — 容器重启且数据卷被清空会丢失自动生成的 JWT 密钥。
-请在 `.env` 中固定 `BUNKR_JWT_SECRET`。
+全部可用环境变量覆盖（见 `.env.example`），便于便携模式或调试。
 
-**下载速度为 0 但任务完成** — 小文件在轮询间隔内完成属于正常；
-进度由 1 秒一次的轮询驱动。
+---
+
+## 架构
+
+```
+main.go                       Wails 应用：窗口、服务注册、事件桥、优雅退出
+internal/services/            ← 本分支新增：前端绑定层
+  app.go                      共享依赖、错误 → APIError、会话与配额
+  auth_service.go             Register / Login / Logout / Me / ChangePassword
+  task_service.go             任务的增删改查与生命周期操作
+  membership_service.go       套餐、订单、支付、兑换码
+  system_service.go           健康、统计、设置、打开目录、重启 aria2
+internal/store|auth|bunkr|aria2|downloads|hub|bunkrtest
+                             ← 与 Web 版逐字相同
+frontend/src/                 Vue 3 + TS + Tailwind（与 Web 版相同）
+frontend/src/api/client.ts    ← 本分支改写：REST → Wails 绑定
+frontend/src/api/ws.ts        ← 本分支改写：WebSocket → Wails 事件
+frontend/bindings/            wails3 generate bindings 产物
+```
+
+### 事件桥
+
+`main.go` 把下载事件注册为 hub sink，转换成 Wails 事件：
+
+```go
+events.AddSink(func(userID, taskID int64, frame hub.Frame) {
+    app.Event.Emit("bunkr:"+frame.Type, map[string]any{
+        "type": frame.Type, "ts": frame.TS, "data": frame.Data,
+        "user_id": userID, "task_id": taskID,
+    })
+})
+```
+
+前端 `src/api/ws.ts` 订阅 `bunkr:*` 并还原成与 Web 版同构的 `WsFrame`，
+因此 `stores/tasks.ts` 等业务代码**一行未改**。
+
+事件类型：`hello`（桌面版由首屏拉取代替）、`task_created`、`task_updated`、
+`task_progress`、`task_completed`、`file_created`、`file_progress`、
+`file_updated`、`log`、`quota`、`stats`、`auth`、`error`。
+
+---
+
+## 账号与会员
+
+与 Web 版完全相同的一套语义：
+
+- 注册 / 登录 / 改密，密码用 scrypt 哈希（由 `store` 统一处理，绝不明文落库）
+- 免费版：**5 个链接 / 50 个文件 / 1 个并发**
+- 会员：无限链接、无限文件、5 个并发
+- 提交任务时整批校验链接额度；爬取后按剩余文件额度截断
+- 模拟支付网关（`BUNKR_PAYMENT_AUTO=1` 时点击即开通）+ 兑换码
+  （默认种子 `BUNKR-MEMBER-2024` / `BUNKR-MEMBER-2025`）
+
+---
+
+## 开发
+
+```bash
+make bindings        # 改了 Go 服务后重新生成前端绑定
+make lint            # gofmt + go vet
+make test            # vet + 单元 + 集成测试
+make test-integration # 全链路集成测试（会拉起真实 aria2c）
+```
+
+改动了 `internal/services/*.go` 的方法签名后，**必须**重新执行
+`make bindings`，否则前端类型会不一致。
+
+---
+
+## 打包
+
+```bash
+make package         # Windows NSIS / macOS dmg / Linux AppImage
+```
+
+`build/icons/` 里是源图标（`make` 不需要它，`wails3` 使用
+`build/appicon.png` 与 `build/windows/icon.ico`）。重新生成：
+
+```bash
+go run .icon/main.go build/icons
+```
+
+---
+
+## 已知限制
+
+- Wails v3 仍处于 beta（`v3.0.0-beta.26`），API 可能在小版本间调整。
+- Linux 无头环境构建需要 GTK/WebKit 开发包；纯 `go build` 只能验证编译。
+- 支付为模拟网关，不接真实支付渠道。
 
 ---
 

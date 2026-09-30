@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity
+      type="win32"
+      name="com.chaunceyxcx.bunkrdownloader"
+      version="1.0.0.0"
+      processorArchitecture="*"/>
+
+  <description>BunkrDownloader — Bunkr album downloader</description>
+
+  <!-- Request the "perMonitorV2" DPI awareness so the UI stays crisp on
+       high-DPI displays and mixed-scaling setups. -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+
+  <!-- WebView2 is required: this is what renders the UI. -->
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+      <!-- Windows 8.1 -->
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}"/>
+    </application>
+  </compatibility>
+
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+          type="win32"
+          name="Microsoft.Windows.WebView2"
+          version="1.0.0.0"
+          processorArchitecture="*"
+          publicKeyToken="f0a8b5f2-3f0e-4a4e-9b1d-1a0a2b3c4d5e"/>
+    </dependentAssembly>
+  </dependency>
+</assembly>

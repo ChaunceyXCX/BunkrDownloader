@@ -1,0 +1,45 @@
+version: '3'
+
+includes:
+  common: ../Taskfile.yml
+  shared: ../common.yml
+
+tasks:
+  build:
+    summary: Builds the Windows desktop application
+    deps:
+      - task: shared:go:mod:tidy
+      - task: shared:build:frontend
+    cmds:
+      - task: generate:syso
+      # -H windowsgui keeps the console window hidden in production builds.
+      - go build {{.BUILD_FLAGS}} -o {{.BIN_DIR}}/{{.APP_NAME}}.exe
+      - rm -f wails_windows_{{.ARCH}}.syso
+    vars:
+      ARCH: '{{.ARCH | default ARCH}}'
+      BUILD_FLAGS: '-tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui -X main.version={{.VERSION}}"'
+    env:
+      GOOS: windows
+      CGO_ENABLED: 0
+
+  generate:syso:
+    summary: Generates the Windows .syso resource file (icon + manifest)
+    dir: build
+    cmds:
+      - wails3 generate syso -arch {{.ARCH}} -icon windows/icon.ico -manifest windows/wails.exe.manifest -info windows/info.json -out ../wails_windows_{{.ARCH}}.syso
+    vars:
+      ARCH: '{{.ARCH | default ARCH}}'
+
+  run:
+    summary: Runs the compiled Windows binary
+    cmds:
+      - '{{.BIN_DIR}}/{{.APP_NAME}}.exe'
+
+  package:
+    summary: Builds a Windows NSIS installer
+    deps:
+      - task: build
+    cmds:
+      - wails3 package -clean -nsis -platform windows/{{.ARCH | default ARCH}}
+    vars:
+      ARCH: '{{.ARCH | default ARCH}}'

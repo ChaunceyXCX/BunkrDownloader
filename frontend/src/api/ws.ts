@@ -1,35 +1,64 @@
-import { API_BASE, getToken } from './client'
-import type { WsFrame } from './types'
+import { Events } from '@wailsio/runtime'
+import { getToken, systemApi } from './client'
+import type { WsFrame, WsStatsData } from './types'
 
 /**
- * Native WebSocket client for `GET /api/ws?token=<jwt>` (docs/API.md §6).
+ * Live task stream for the desktop build.
  *
- * - exponential backoff reconnect 1s → 2s → 4s → … → 15s max, reset on open
- * - 25s heartbeat: the client sends `{action:"ping"}`; the server answers `pong`
- *   (the server may also initiate a `ping` frame, which is answered the same way)
- * - subscribe/unsubscribe a single task for its detailed event stream
+ * `main.go` bridges the download hub onto Wails events: every frame is emitted
+ * as `bunkr:<frame.Type>` with the payload `{ type, ts, data, user_id, task_id }`.
+ * This client subscribes to those event names and re-publishes them to the app
+ * exactly like the previous `GET /api/ws` socket did, so `stores/tasks.ts` and
+ * the components are unchanged.
+ *
+ * The transport is in-process: there is no handshake, no heartbeat and no
+ * reconnect logic — `connect()` subscribes, `close()` unsubscribes.
  */
 export type WsStatus = 'closed' | 'connecting' | 'open' | 'reconnecting'
 
 type FrameHandler = (frame: WsFrame) => void
 type StatusHandler = (status: WsStatus) => void
 
-const HEARTBEAT_MS = 25_000
-const BACKOFF_MIN_MS = 1_000
-const BACKOFF_MAX_MS = 15_000
-/** A pong (or any inbound frame) proves the link is alive — reset the watchdog. */
-const STALL_TIMEOUT_MS = 60_000
+/** Every frame type the web build handled over the socket. */
+const FRAME_TYPES = [
+  'hello',
+  'task_created',
+  'task_updated',
+  'task_progress',
+  'task_completed',
+  'file_created',
+  'file_progress',
+  'file_updated',
+  'log',
+  'quota',
+  'stats',
+  'auth',
+  'pong',
+  'error',
+] as const
+
+/**
+ * Frames that only belong to the task currently open in the file/log panes —
+ * the server-side WebSocket delivered them for subscribed tasks only, so the
+ * same filter is applied here.
+ */
+const TASK_SCOPED = new Set<string>(['file_created', 'file_progress', 'file_updated', 'log'])
+
+/** Shape published by `main.go` for every `bunkr:*` event. */
+interface WailsFrame {
+  type?: string
+  ts?: number
+  data?: unknown
+  user_id?: number
+  task_id?: number
+}
+
+function nowSec(): number {
+  return Math.floor(Date.now() / 1000)
+}
 
 export class TaskSocket {
-  private ws: WebSocket | null = null
-  private url: string | null = null
-  private backoff = BACKOFF_MIN_MS
-  private reconnectTimer: number | null = null
-  private heartbeatTimer: number | null = null
-  private stallTimer: number | null = null
-  private attempts = 0
-  private closedByUser = false
-
+  private disposers: (() => void)[] = []
   private readonly handlers = new Set<FrameHandler>()
   private readonly statusHandlers = new Set<StatusHandler>()
   private readonly subscriptions = new Set<number>()
@@ -56,158 +85,80 @@ export class TaskSocket {
     this.statusHandlers.forEach((fn) => fn(s))
   }
 
-  private buildUrl(): string | null {
-    const token = getToken()
-    if (!token) return null
-    // Same-origin http(s) → ws(s); dev server proxies /api including WS.
-    if (typeof location === 'undefined') return null
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    return `${proto}//${location.host}${API_BASE}/ws?token=${encodeURIComponent(token)}`
-  }
-
   connect(): void {
-    this.closedByUser = false
-    const url = this.buildUrl()
-    if (!url) {
+    if (this.disposers.length > 0) return
+    if (!getToken()) {
+      // Nothing to listen to before sign-in; main.ts connects again once the
+      // session is restored.
       this.setStatus('closed')
       return
     }
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
-      return
+    this.setStatus('open')
+    for (const type of FRAME_TYPES) {
+      this.disposers.push(
+        Events.On(`bunkr:${type}`, (ev) => this.dispatch(type, (ev.data ?? {}) as WailsFrame)),
+      )
     }
-    this.url = url
-    this.setStatus(this.attempts > 0 ? 'reconnecting' : 'connecting')
+    void this.seedStats()
+  }
 
-    let ws: WebSocket
+  /**
+   * The web build pushed a `hello` frame right after the handshake so the
+   * dashboard had counters before the first poll. The download hub only
+   * broadcasts `stats` while something is running, so the initial snapshot is
+   * fetched once here and published as the very first `stats` frame. User and
+   * quota already come from `authApi.me()` during boot.
+   */
+  private async seedStats(): Promise<void> {
     try {
-      ws = new WebSocket(url)
+      const stats = await systemApi.stats()
+      this.dispatch('stats', {
+        type: 'stats',
+        ts: nowSec(),
+        data: { stats } satisfies WsStatsData,
+      })
     } catch {
-      this.scheduleReconnect()
-      return
-    }
-    this.ws = ws
-
-    ws.onopen = () => {
-      this.attempts = 0
-      this.backoff = BACKOFF_MIN_MS
-      this.setStatus('open')
-      // Re-assert subscriptions that survived the disconnect.
-      this.subscriptions.forEach((id) => this.send({ action: 'subscribe', task_id: id }))
-      this.startHeartbeat()
-    }
-
-    ws.onmessage = (ev: MessageEvent<string>) => {
-      this.armStallWatchdog()
-      let frame: WsFrame
-      try {
-        frame = JSON.parse(ev.data) as WsFrame
-      } catch {
-        return
-      }
-      if (!frame || typeof frame.type !== 'string') return
-      // Server-initiated keepalive: reply so its own watchdog stays happy.
-      if (frame.type === 'ping') {
-        this.send({ action: 'ping' })
-        return
-      }
-      if (frame.type === 'pong') return
-      this.handlers.forEach((fn) => fn(frame))
-    }
-
-    ws.onerror = () => {
-      // `onclose` always follows; reconnect is handled there.
-    }
-
-    ws.onclose = () => {
-      this.stopTimers()
-      this.ws = null
-      if (this.closedByUser) {
-        this.setStatus('closed')
-        return
-      }
-      this.scheduleReconnect()
+      /* best effort — a 401 already routes through the session handlers */
     }
   }
 
-  private scheduleReconnect(): void {
-    if (this.reconnectTimer !== null) return
-    this.setStatus('reconnecting')
-    this.attempts += 1
-    const delay = Math.min(this.backoff, BACKOFF_MAX_MS)
-    this.backoff = Math.min(this.backoff * 2, BACKOFF_MAX_MS)
-    this.reconnectTimer = window.setTimeout(() => {
-      this.reconnectTimer = null
-      this.connect()
-    }, delay)
-  }
-
-  private startHeartbeat(): void {
-    this.stopTimers()
-    this.send({ action: 'ping' })
-    this.heartbeatTimer = window.setInterval(() => this.send({ action: 'ping' }), HEARTBEAT_MS)
-    this.armStallWatchdog()
-  }
-
-  private armStallWatchdog(): void {
-    if (this.stallTimer !== null) window.clearTimeout(this.stallTimer)
-    this.stallTimer = window.setTimeout(() => {
-      // No traffic at all for 60s: the socket is half-open, force a reconnect.
-      this.ws?.close()
-    }, STALL_TIMEOUT_MS)
-  }
-
-  private stopTimers(): void {
-    if (this.heartbeatTimer !== null) {
-      window.clearInterval(this.heartbeatTimer)
-      this.heartbeatTimer = null
+  private dispatch(eventType: string, raw: WailsFrame): void {
+    if (eventType === 'pong') return
+    const type = typeof raw.type === 'string' ? raw.type : eventType
+    const taskId = Number(raw.task_id ?? 0)
+    if (TASK_SCOPED.has(type) && taskId !== 0 && !this.subscriptions.has(taskId)) return
+    const frame: WsFrame = {
+      type,
+      ts: typeof raw.ts === 'number' ? raw.ts : nowSec(),
+      data: raw.data,
     }
-    if (this.stallTimer !== null) {
-      window.clearTimeout(this.stallTimer)
-      this.stallTimer = null
-    }
-  }
-
-  private send(payload: Record<string, unknown>): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(payload))
-    }
+    this.handlers.forEach((fn) => fn(frame))
   }
 
   subscribe(taskId: number): void {
     this.subscriptions.add(taskId)
-    this.send({ action: 'subscribe', task_id: taskId })
   }
 
   unsubscribe(taskId: number): void {
     this.subscriptions.delete(taskId)
-    this.send({ action: 'unsubscribe', task_id: taskId })
   }
 
-  /** Force an immediate reconnect (used by the "retry" button in the topbar). */
+  /** Used by the "retry" button in the topbar — re-binds every event handler. */
   reconnect(): void {
-    this.attempts = 0
-    this.backoff = BACKOFF_MIN_MS
-    if (this.reconnectTimer !== null) {
-      window.clearTimeout(this.reconnectTimer)
-      this.reconnectTimer = null
-    }
+    const active = new Set(this.subscriptions)
     this.close()
+    this.subscriptions.clear()
+    active.forEach((id) => this.subscriptions.add(id))
     this.connect()
   }
 
   close(): void {
-    this.closedByUser = true
+    this.disposers.forEach((dispose) => dispose())
+    this.disposers = []
     this.subscriptions.clear()
-    this.stopTimers()
-    if (this.reconnectTimer !== null) {
-      window.clearTimeout(this.reconnectTimer)
-      this.reconnectTimer = null
-    }
-    this.ws?.close()
-    this.ws = null
     this.setStatus('closed')
   }
 }
 
-/** App-wide singleton — one connection, many subscribers. */
+/** App-wide singleton — one subscription set, many subscribers. */
 export const socket = new TaskSocket()

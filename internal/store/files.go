@@ -520,3 +520,16 @@ func (s *Store) BoundFiles(limit int) ([]*File, error) {
 	}
 	return out, rows.Err()
 }
+
+// DetachAllGIDs clears every aria2 handle, e.g. after the daemon restarted and
+// the GIDs no longer exist. The files become pending again and are resubmitted.
+func (s *Store) DetachAllGIDs() error {
+	return s.tx(func(tx *sql.Tx) error {
+		_, err := tx.Exec(`
+            UPDATE files SET gid='', speed=0,
+                   status=CASE WHEN status='downloading' THEN 'pending' ELSE status END,
+                   updated_at=?
+            WHERE gid <> ''`, nowUTC())
+		return err
+	})
+}

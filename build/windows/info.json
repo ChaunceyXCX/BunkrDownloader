@@ -1,0 +1,9 @@
+{
+  "ProductName": "BunkrDownloader",
+  "FileDescription": "Bunkr album downloader",
+  "CompanyName": "BunkrDownloader",
+  "LegalCopyright": "MIT",
+  "ProductVersion": "1.0.0",
+  "AssemblyVersion": "1.0.0.0",
+  "Comments": "Bunkr album downloader powered by aria2"
+}

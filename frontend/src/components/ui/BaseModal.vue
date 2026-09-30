@@ -128,6 +128,11 @@ onBeforeUnmount(() => {
 .bd-modal {
   position: fixed;
   inset: 0;
+  /* The overlay always covers the whole viewport: a `max-width` on this box
+     would shrink the fixed element and pin it to the left edge, so the width
+     modifier is applied to the panel instead. */
+  width: 100%;
+  height: 100%;
   z-index: 90;
   display: flex;
   align-items: center;
@@ -153,16 +158,16 @@ onBeforeUnmount(() => {
   box-shadow: var(--shadow-pop);
   overflow: hidden;
 }
-.bd-modal--sm {
+.bd-modal--sm .bd-modal__panel {
   max-width: 380px;
 }
-.bd-modal--md {
+.bd-modal--md .bd-modal__panel {
   max-width: 520px;
 }
-.bd-modal--lg {
+.bd-modal--lg .bd-modal__panel {
   max-width: 720px;
 }
-.bd-modal--xl {
+.bd-modal--xl .bd-modal__panel {
   max-width: 960px;
 }
 .bd-modal__head {

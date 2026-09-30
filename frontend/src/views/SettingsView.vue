@@ -130,6 +130,38 @@ async function changePassword(): Promise<void> {
   }
 }
 
+/* ---------------- desktop conveniences --------------- */
+const dirBusy = ref(false)
+const ariaBusy = ref(false)
+
+/** Reveals the download folder in the OS file manager. */
+async function openDownloadDir(): Promise<void> {
+  if (dirBusy.value) return
+  dirBusy.value = true
+  try {
+    await systemApi.openDownloadDir()
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : i18n.t('error.generic'))
+  } finally {
+    dirBusy.value = false
+  }
+}
+
+/** Restarts aria2c and refreshes the runtime row above. */
+async function restartAria2(): Promise<void> {
+  if (ariaBusy.value) return
+  ariaBusy.value = true
+  try {
+    await systemApi.aria2Restart()
+    toast.success(i18n.t('settings.aria2Restarted'))
+    await settings.loadRuntime()
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : i18n.t('error.generic'))
+  } finally {
+    ariaBusy.value = false
+  }
+}
+
 /* ---------------- clear local data --------------- */
 const clearOpen = ref(false)
 function clearLocal(): void {
@@ -256,6 +288,36 @@ const langOptions = [
           <div class="bd-set__kv">
             <span class="bd-set__k">{{ i18n.t('settings.downloadDir') }}</span>
             <span class="bd-set__v">{{ settings.downloadDir || i18n.t('settings.downloadDirUnknown') }}</span>
+          </div>
+          <div class="bd-set__kv">
+            <span class="bd-set__k">{{ i18n.t('settings.openDownloadDir') }}</span>
+            <span class="bd-set__v">
+              <BaseButton
+                variant="ghost"
+                size="sm"
+                :icon="'folder'"
+                :loading="dirBusy"
+                :label="i18n.t('settings.openDownloadDir')"
+                @click="openDownloadDir"
+              >
+                {{ i18n.t('settings.openDownloadDir') }}
+              </BaseButton>
+            </span>
+          </div>
+          <div class="bd-set__kv">
+            <span class="bd-set__k">{{ i18n.t('settings.restartAria2') }}</span>
+            <span class="bd-set__v">
+              <BaseButton
+                variant="ghost"
+                size="sm"
+                :icon="'refresh'"
+                :loading="ariaBusy"
+                :label="i18n.t('settings.restartAria2')"
+                @click="restartAria2"
+              >
+                {{ i18n.t('settings.restartAria2') }}
+              </BaseButton>
+            </span>
           </div>
           <div class="bd-set__kv">
             <span class="bd-set__k">{{ i18n.t('settings.connection') }}</span>

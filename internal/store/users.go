@@ -343,18 +343,54 @@ func (s *Store) CanAddFiles(userID int64, n int) error {
 
 // RemainingFiles is how many more files a user may still register.
 func (s *Store) RemainingFiles(userID int64) int {
-	q, err := s.Quota(userID)
+	return s.RemainingFilesExcluding(userID, 0)
+}
+
+// RemainingFilesExcluding is RemainingFiles but ignores the files of one task.
+//
+// This is what the enqueue path needs: the task's own freshly registered files
+// are already counted as `pending`, so including them would consume the whole
+// allowance before a single byte is transferred.
+func (s *Store) RemainingFilesExcluding(userID, excludeTaskID int64) int {
+	used, limit, unlimited, err := s.filesUsage(userID, excludeTaskID)
 	if err != nil {
 		return 0
 	}
-	if q.FilesUnlimited {
+	if unlimited {
 		return -1
 	}
-	rem := q.FilesLimit - q.FilesUsed
+	rem := limit - used
 	if rem < 0 {
 		return 0
 	}
 	return rem
+}
+
+// filesUsage reports how many files a user already holds, optionally ignoring
+// one task, plus the applicable ceiling.
+func (s *Store) filesUsage(userID, excludeTaskID int64) (used, limit int, unlimited bool, err error) {
+	u, err := s.GetUser(userID)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	limits := s.LimitsForPlan(u.Plan)
+	if u.IsMember(time.Now()) {
+		limits = s.memberLimits
+	}
+	if limits.Files < 0 {
+		return 0, 0, true, nil
+	}
+
+	query := `SELECT COUNT(*) FROM files WHERE user_id=? AND status <> ?`
+	args := []any{userID, FileSkipped}
+	if excludeTaskID > 0 {
+		query += ` AND task_id <> ?`
+		args = append(args, excludeTaskID)
+	}
+	if err := s.db.QueryRow(query, args...).Scan(&used); err != nil {
+		return 0, 0, false, err
+	}
+	return used, limits.Files, false, nil
 }
 
 // ------------------------------------------------------------- membership

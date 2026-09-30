@@ -1,0 +1,25 @@
+version: '3'
+
+# Shared build steps referenced by the per-platform task files.
+vars:
+  APP_NAME: BunkrDownloader
+  BIN_DIR: bin
+  FRONTEND_DIR: frontend
+
+tasks:
+  go:mod:tidy:
+    summary: Tidies go.mod
+    cmds:
+      - go mod tidy
+
+  build:frontend:
+    summary: Installs dependencies and builds the Vue frontend
+    cmds:
+      - cd {{.FRONTEND_DIR}} && npm install --silent
+      - cd {{.FRONTEND_DIR}} && npm run build
+
+  report:icons:
+    summary: Reports where the icon assets live
+    cmds:
+      - ls -la build/appicon.png
+      - ls -la build/windows/icon.ico
