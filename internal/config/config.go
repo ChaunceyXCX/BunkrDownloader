@@ -88,11 +88,13 @@ func Load(version string) *Config {
 		JWTSecret: envStr("BUNKR_JWT_SECRET", ""),
 		JWTTTL:    envDuration("BUNKR_JWT_TTL", 30*24*time.Hour),
 
-		FreeLinksLimit:  envInt("BUNKR_FREE_LINKS_LIMIT", 5),
-		FreeFilesLimit:  envInt("BUNKR_FREE_FILES_LIMIT", 50),
-		FreeConcurrency: envInt("BUNKR_FREE_CONCURRENCY", 1),
-
-		MemberConcurrency: envInt("BUNKR_MEMBER_CONCURRENCY", 5),
+		FreeLinksLimit: envInt("BUNKR_FREE_LINKS_LIMIT", 5),
+		FreeFilesLimit: envInt("BUNKR_FREE_FILES_LIMIT", 50),
+		// Concurrency is unlimited by default (0). Only link count and file
+		// (download) count gate a free account; simultaneous jobs are not
+		// throttled. Set BUNKR_*_CONCURRENCY to a positive number to re-enable a cap.
+		FreeConcurrency:   envInt("BUNKR_FREE_CONCURRENCY", 0),
+		MemberConcurrency: envInt("BUNKR_MEMBER_CONCURRENCY", 0),
 
 		Aria2Enabled:   envBool("BUNKR_ARIA2_ENABLED", true),
 		Aria2Host:      envStr("BUNKR_ARIA2_HOST", "127.0.0.1"),

@@ -117,13 +117,14 @@ func TestLoadDesktopDerivesPaths(t *testing.T) {
 	if cfg.DownloadDir != filepath.Join(dir, "downloads") {
 		t.Errorf("DownloadDir = %q", cfg.DownloadDir)
 	}
-	// The quota defaults match the documented free tier.
-	if cfg.FreeLinksLimit != 5 || cfg.FreeFilesLimit != 50 || cfg.FreeConcurrency != 1 {
-		t.Errorf("free limits = %d/%d/%d, want 5/50/1",
+	// The quota defaults match the documented free tier: unlimited concurrency
+	// (0) with only link/file counts limiting a free account.
+	if cfg.FreeLinksLimit != 5 || cfg.FreeFilesLimit != 50 || cfg.FreeConcurrency != 0 {
+		t.Errorf("free limits = %d/%d/%d, want 5/50/0 (unlimited concurrency)",
 			cfg.FreeLinksLimit, cfg.FreeFilesLimit, cfg.FreeConcurrency)
 	}
-	if cfg.MemberConcurrency != 5 {
-		t.Errorf("member concurrency = %d, want 5", cfg.MemberConcurrency)
+	if cfg.MemberConcurrency != 0 {
+		t.Errorf("member concurrency = %d, want 0 (unlimited)", cfg.MemberConcurrency)
 	}
 	// Directories are created eagerly so the first download cannot fail.
 	for _, d := range []string{cfg.DataDir, cfg.DownloadDir} {

@@ -52,10 +52,11 @@ func LoadDesktop(version string) *DesktopConfig {
 		JWTSecret: envStr("BUNKR_JWT_SECRET", ""),
 		JWTTTL:    envDuration("BUNKR_JWT_TTL", 30*24*time.Hour),
 
-		FreeLinksLimit:    envInt("BUNKR_FREE_LINKS_LIMIT", 5),
-		FreeFilesLimit:    envInt("BUNKR_FREE_FILES_LIMIT", 50),
-		FreeConcurrency:   envInt("BUNKR_FREE_CONCURRENCY", 1),
-		MemberConcurrency: envInt("BUNKR_MEMBER_CONCURRENCY", 5),
+		FreeLinksLimit: envInt("BUNKR_FREE_LINKS_LIMIT", 5),
+		FreeFilesLimit: envInt("BUNKR_FREE_FILES_LIMIT", 50),
+		// Unlimited (0) by default: only link/file counts gate a free account.
+		FreeConcurrency:   envInt("BUNKR_FREE_CONCURRENCY", 0),
+		MemberConcurrency: envInt("BUNKR_MEMBER_CONCURRENCY", 0),
 
 		Aria2Binary:    envStr("BUNKR_ARIA2_BIN", ""),
 		Aria2AutoFetch: envBool("BUNKR_ARIA2_AUTO_FETCH", true),
