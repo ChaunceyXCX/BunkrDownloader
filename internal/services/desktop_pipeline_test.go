@@ -462,6 +462,76 @@ func waitForStableBytes(t *testing.T, e *desktopEnv, taskID int64, timeout time.
 	return last
 }
 
+// TestDesktopMembershipFlow is the saved smoke test for the reported bug:
+// after buying a monthly membership the buy buttons must not all disappear,
+// i.e. an already-member account must still be able to open AND pay for the
+// other tier. It runs the real desktop stack (store + services), no UI.
+func TestDesktopMembershipFlow(t *testing.T) {
+	e := newDesktopEnvWithLimits(t, 100)
+	token := e.member_("smoker")
+
+	// Setup: buy monthly.
+	m, apiErr := e.member.CreateOrder(token, "member_monthly")
+	if apiErr != nil {
+		t.Fatalf("CreateOrder monthly: %v", apiErr)
+	}
+	res, apiErr := e.member.PayOrder(token, m.ID, "alipay")
+	if apiErr != nil {
+		t.Fatalf("PayOrder monthly: %v", apiErr)
+	}
+	if !res.Quota.IsMember {
+		t.Fatal("not a member after first payment")
+	}
+	if res.Quota.LinksUnlimited == false || res.Quota.FilesUnlimited == false {
+		t.Errorf("member quota not unlimited: links=%v files=%v",
+			res.Quota.LinksUnlimited, res.Quota.FilesUnlimited)
+	}
+
+	// Repurchase while already a member: must succeed (the UI must keep the
+	// buy buttons visible so the user can trigger this).
+	y, apiErr := e.member.CreateOrder(token, "member_yearly")
+	if apiErr != nil {
+		t.Fatalf("repurchase CreateOrder while member: %v", apiErr)
+	}
+	if y.Status != store.OrderPending {
+		t.Fatalf("repurchase order status = %q, want pending", y.Status)
+	}
+	paid, apiErr := e.member.PayOrder(token, y.ID, "alipay")
+	if apiErr != nil {
+		t.Fatalf("repurchase PayOrder while member: %v", apiErr)
+	}
+	if paid.Order.Status != store.OrderPaid {
+		t.Errorf("repurchase order = %+v", paid.Order)
+	}
+
+	// Both orders paid and visible.
+	orders, apiErr := e.member.ListOrders(token)
+	if apiErr != nil {
+		t.Fatal(apiErr)
+	}
+	count := 0
+	for _, o := range orders.Orders {
+		if o.Status == store.OrderPaid {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Errorf("paid orders = %d, want 2 (monthly + yearly repurchase)", count)
+	}
+
+	// Quota stays unlimited after the second purchase.
+	who, apiErr := e.auth.Me(token)
+	if apiErr != nil {
+		t.Fatal(apiErr)
+	}
+	if !who.Quota.IsMember {
+		t.Error("still not a member after repurchase")
+	} else {
+		t.Logf("repurchase OK: plan=%s member=%v unlimitedLinks=%v",
+			who.User.Plan, who.Quota.IsMember, who.Quota.LinksUnlimited)
+	}
+}
+
 func maxDownloaded(t *testing.T, e *desktopEnv, taskID int64) int64 {
 	t.Helper()
 	files, err := e.store.AllFilesForTask(taskID)

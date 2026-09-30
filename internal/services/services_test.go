@@ -438,6 +438,60 @@ func TestMembershipPurchase(t *testing.T) {
 	}
 }
 
+// TestRepurchaseWhileMember covers the reported bug: once a user is already a
+// member, they must still be able to open and pay for ANOTHER plan (renew /
+// switch), instead of every plan looking "current" and losing its buy button.
+func TestRepurchaseWhileMember(t *testing.T) {
+	e := newEnv(t)
+	token := e.member_("renewer")
+
+	// First purchase: monthly.
+	m, apiErr := e.member.CreateOrder(token, "member_monthly")
+	if apiErr != nil {
+		t.Fatalf("first CreateOrder: %v", apiErr)
+	}
+	if _, apiErr := e.member.PayOrder(token, m.ID, "alipay"); apiErr != nil {
+		t.Fatalf("first PayOrder: %v", apiErr)
+	}
+
+	// Already a member now.
+	who, apiErr := e.auth.Me(token)
+	if apiErr != nil {
+		t.Fatalf("Me after first payment: %v", apiErr)
+	}
+	if !who.Quota.IsMember {
+		t.Fatal("expected membership after first payment")
+	}
+
+	// A member must still be able to buy the other tier and have it settle.
+	y, apiErr := e.member.CreateOrder(token, "member_yearly")
+	if apiErr != nil {
+		t.Fatalf("repurchase CreateOrder while member: %v", apiErr)
+	}
+	if y.Status != store.OrderPending {
+		t.Fatalf("repurchase order status = %q, want pending", y.Status)
+	}
+	if res, apiErr := e.member.PayOrder(token, y.ID, "alipay"); apiErr != nil {
+		t.Fatalf("repurchase PayOrder while member: %v", apiErr)
+	} else if res.Order.Status != store.OrderPaid || !res.Quota.IsMember {
+		t.Errorf("repurchase settled = %+v", res)
+	}
+
+	orders, apiErr := e.member.ListOrders(token)
+	if apiErr != nil {
+		t.Fatal(apiErr)
+	}
+	paid := 0
+	for _, o := range orders.Orders {
+		if o.Status == store.OrderPaid {
+			paid++
+		}
+	}
+	if paid != 2 {
+		t.Errorf("paid orders = %d, want 2 (renew + switch both settle)", paid)
+	}
+}
+
 func TestCancelOrder(t *testing.T) {
 	e := newEnv(t)
 	token := e.member_("canceller")
