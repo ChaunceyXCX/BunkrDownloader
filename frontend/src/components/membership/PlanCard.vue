@@ -31,16 +31,10 @@ const periodKey = computed(() => {
 
 const price = computed(() => formatPrice(props.plan.price_cents, props.plan.currency))
 
-const features = computed(() => {
-  const f = props.plan.features ?? []
-  if (unlimited.value) return f
-  return [
-    ...f,
-    i18n.t('membership.linksFeature', { n: props.plan.limits?.links ?? 0 }),
-    i18n.t('membership.filesFeature', { n: props.plan.limits?.files ?? 0 }),
-    i18n.t('membership.concurrentFeature', { n: props.plan.limits?.concurrent ?? 0 }),
-  ]
-})
+// The backend already describes each plan's allowance in `features` (and does
+// so from the same numbers that drive the quota), so the list is rendered
+// as-is. Appending derived lines here duplicated the free plan's limits.
+const features = computed(() => props.plan.features ?? [])
 
 const activeId = computed(() => (auth.isMember ? 'member_monthly' : 'free'))
 const isActiveHere = computed(() => props.plan.id === activeId.value || props.current)

@@ -54,8 +54,14 @@ function onSort(item: DropdownItem): void {
 }
 
 const activeSort = computed(() => `${store.sort.by}_${store.sort.order}`)
-const activeSortLabel = computed(
-  () => i18n.t(store.sort.order === 'desc' ? `task.sort.${store.sort.by}_desc` : `task.sort.${store.sort.by}_asc`),
+// Locale keys use `created` / `updated` while the store uses the SQL column
+// names `created_at` / `updated_at`; without the mapping the raw key leaks
+// into the dropdown.
+const sortColumnToKey = computed(() =>
+  store.sort.by === 'updated_at' ? 'updated' : 'created',
+)
+const activeSortLabel = computed(() =>
+  i18n.t(`task.sort.${sortColumnToKey.value}_${store.sort.order}`),
 )
 
 onMounted(() => {

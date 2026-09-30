@@ -172,7 +172,7 @@ const zhCN: Record<string, string> = {
   'task.progressOf': '{done} / {total}',
   'task.createdAt': '创建于 {time}',
   'task.crawling': '正在解析相册…',
-  'task.speed': '{speed}',
+  'task.speed': '速度',
   'task.retryFailed': '重试失败文件',
   'task.failedCount': '{n} 个失败',
 
@@ -362,6 +362,9 @@ const zhCN: Record<string, string> = {
   'settings.uptime': '运行时长',
   'settings.downloadDir': '下载目录',
   'settings.downloadDirUnknown': '由服务端配置',
+  'settings.openDownloadDir': '打开下载目录',
+  'settings.restartAria2': '重启 aria2',
+  'settings.aria2Restarted': 'aria2 已重启',
   'settings.connection': '实时连接',
   'settings.security': '账户',
   'settings.changePassword': '修改密码',

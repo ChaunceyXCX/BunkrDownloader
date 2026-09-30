@@ -1,26 +1,32 @@
-# ---- Go ----
-bin/
+# ============================================================================
+#  Patterns are root-anchored (leading slash) on purpose: a bare "downloads/"
+# would also match internal/downloads/, which is source code.
+# ============================================================================
+
+# ---- Go build artifacts ----
+/bin/
+/dist/
 *.exe
 *.test
 *.out
 coverage.*
 
-# ---- embedded SPA (built by `make web` / Docker) ----
-internal/web/dist/*
-!internal/web/dist/.gitkeep
+# ---- generated / embedded SPA (built by `make web`) ----
+/internal/web/dist/*
+!/internal/web/dist/.gitkeep
+/frontend/dist/
+/frontend/.vite/
 
-# ---- frontend ----
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
-frontend/.env
-frontend/.env.local
+# ---- dependencies ----
+/frontend/node_modules/
 npm-debug.log*
 
-# ---- runtime data ----
-.bunkr_data/
-data/
-downloads/
+# ---- runtime data (always root-anchored) ----
+/.bunkr_data/
+/data/
+/downloads/
+/.shot/
+/.icon/
 *.db
 *.db-shm
 *.db-wal
@@ -30,14 +36,16 @@ aria2.log
 aria2.log.out
 
 # ---- env & secrets ----
-.env
-.env.local
-!.env.example
+/.env
+/.env.local
+!/.env.example
+!/.env.desktop.example
 .jwt_secret
 
 # ---- editors / OS ----
-.vscode/
-.idea/
-.DS_Store
+/.vscode/
+/.idea/
+/.kilo/
+/**/.DS_Store
 Thumbs.db
 *.swp

@@ -10,6 +10,7 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"strings"
 )
 
 //go:embed all:dist
@@ -51,24 +52,18 @@ const PlaceholderHTML = `<!doctype html>
 </div></body></html>`
 
 // HasBuild reports whether a real frontend bundle is embedded, i.e. whether
-// dist/index.html references hashed assets under ./assets/.
+// dist/index.html references hashed assets (as opposed to the committed
+// placeholder). The asset prefix changed from "./" to "/" when the SPA moved
+// to history routing, so both forms are accepted.
 func HasBuild() bool {
 	b, err := distFS.ReadFile("dist/index.html")
-	if err != nil {
+	if err != nil || len(b) == 0 {
 		return false
 	}
-	return len(b) > 0 && contains(string(b), "./assets/")
+	html := string(b)
+	return contains(html, "/assets/") && (contains(html, "index-") || contains(html, "main-"))
 }
 
 func contains(haystack, needle string) bool {
-	return len(haystack) >= len(needle) && indexOf(haystack, needle) >= 0
-}
-
-func indexOf(h, n string) int {
-	for i := 0; i+len(n) <= len(h); i++ {
-		if h[i:i+len(n)] == n {
-			return i
-		}
-	}
-	return -1
+	return strings.Contains(haystack, needle)
 }

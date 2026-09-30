@@ -170,7 +170,7 @@ const en: Record<string, string> = {
   'task.progressOf': '{done} / {total}',
   'task.createdAt': 'Created {time}',
   'task.crawling': 'Crawling album…',
-  'task.speed': '{speed}',
+  'task.speed': 'Speed',
   'task.retryFailed': 'Retry failed files',
   'task.failedCount': '{n} failed',
 
@@ -361,6 +361,9 @@ const en: Record<string, string> = {
   'settings.uptime': 'Uptime',
   'settings.downloadDir': 'Download directory',
   'settings.downloadDirUnknown': 'Configured on the server',
+  'settings.openDownloadDir': 'Open download folder',
+  'settings.restartAria2': 'Restart aria2',
+  'settings.aria2Restarted': 'aria2 restarted',
   'settings.connection': 'Live connection',
   'settings.security': 'Account',
   'settings.changePassword': 'Change password',

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	pathpkg "path"
 	"strings"
 	"time"
 
@@ -228,13 +229,12 @@ func (s *Server) registerStatic(engine *gin.Engine) {
 	}
 
 	index := readIndex(s.static)
-	fileServer := http.FileServer(s.static)
 
 	engine.NoRoute(func(c *gin.Context) {
 		path := strings.TrimPrefix(c.Request.URL.Path, "/")
 
 		// A miss under /api is a genuine 404: never hand API paths to the SPA.
-		if strings.HasPrefix(path, "api/") || path == "api" {
+		if path == "api" || strings.HasPrefix(path, "api/") {
 			fail(c, http.StatusNotFound, CodeNotFound, "接口不存在: /"+path)
 			return
 		}
@@ -242,23 +242,69 @@ func (s *Server) registerStatic(engine *gin.Engine) {
 			serveIndex(c, index)
 			return
 		}
-		if f, err := s.static.Open("/" + path); err == nil {
-			stat, statErr := f.Stat()
-			_ = f.Close()
-			if statErr == nil && !stat.IsDir() {
-				if strings.HasPrefix(path, "assets/") {
-					// Vite emits content-hashed asset names: cache hard.
-					c.Header("Cache-Control", "public, max-age=31536000, immutable")
-				} else {
-					c.Header("Cache-Control", "no-cache")
-				}
-				fileServer.ServeHTTP(c.Writer, c.Request)
+
+		// Serve a real file when the path resolves to one. Asset lookups also
+		// try the root so the app keeps working when it is mounted under a
+		// sub-path by a reverse proxy.
+		if ok := s.serveStatic(c, path); ok {
+			return
+		}
+		if isAssetPath(path) {
+			if root, ok := stripSPAcPrefix(path); ok && s.serveStatic(c, root) {
 				return
 			}
 		}
 		// Unknown path: hand it to the SPA router.
 		serveIndex(c, index)
 	})
+}
+
+// serveStatic writes the embedded file at path, reporting whether it existed.
+func (s *Server) serveStatic(c *gin.Context, path string) bool {
+	if s.static == nil {
+		return false
+	}
+	f, err := s.static.Open("/" + path)
+	if err != nil {
+		return false
+	}
+	stat, statErr := f.Stat()
+	_ = f.Close()
+	if statErr != nil || stat.IsDir() {
+		return false
+	}
+	if strings.HasPrefix(path, "assets/") {
+		// Vite emits content-hashed names, so the bytes never change.
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		c.Header("Cache-Control", "no-cache")
+	}
+	// http.FileServer needs the full request path to be rewritten.
+	c.Request.URL.Path = "/" + path
+	http.FileServer(s.static).ServeHTTP(c.Writer, c.Request)
+	return true
+}
+
+// isAssetPath reports whether a path looks like a static asset request.
+func isAssetPath(path string) bool {
+	switch pathpkg.Ext(path) {
+	case ".js", ".mjs", ".css", ".map", ".json", ".svg", ".png", ".jpg", ".jpeg",
+		".gif", ".webp", ".avif", ".ico", ".woff", ".woff2", ".ttf", ".eot", ".txt":
+		return true
+	}
+	return false
+}
+
+// stripSPAcPrefix removes leading SPA route segments from an asset path so that
+// /app/assets/x.js is retried as /assets/x.js.
+func stripSPAcPrefix(path string) (string, bool) {
+	parts := strings.Split(path, "/")
+	for i, p := range parts {
+		if strings.HasPrefix(p, "assets/") || p == "assets" {
+			return strings.Join(parts[i:], "/"), true
+		}
+	}
+	return "", false
 }
 
 func serveIndex(c *gin.Context, index []byte) {
